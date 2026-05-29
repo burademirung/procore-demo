@@ -59,7 +59,10 @@ authorize → user approves → Conduit gets upstream code(s)
 - Interface: `TokenStore` (`src/auth/tokenStore.ts`) — `get/set/delete/tenantsWith`, keyed by
   `(tenantId, provider)`, backed by `Map`s (no dynamic object indexing).
 - Workers: `PropsTokenStore` reads the live grant props; `OAUTH_KV` persists grants across sessions.
-- At rest: tokens are encrypted with **AES-256-GCM** (`RS_TOKENS_ENC_KEY`).
+- At rest: on Cloudflare, provider tokens ride inside the OAuth grant props, which
+  `@cloudflare/workers-oauth-provider` encrypts. App-level **AES-256-GCM** envelope encryption keyed
+  by `RS_TOKENS_ENC_KEY` is **specified but not yet implemented** (Phase 1) — the key is reserved and
+  not currently read by the token-store path. `[NEEDS LIVE VERIFICATION]`
 
 ## Security notes
 - The MCP server validates the `Origin` header (403) to block DNS rebinding (spec MUST).

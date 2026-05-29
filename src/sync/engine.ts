@@ -7,6 +7,7 @@ import {
   mappingByKey,
   procoreToSalesforce,
   salesforceToProcore,
+  MAPPINGS,
   LEGAL_MAPPING_KEYS,
   FINANCIAL_MAPPING_KEYS,
 } from "../mapping/mappings.js";
@@ -72,12 +73,29 @@ function segmentFor(resourceName: string): string {
   return RESOURCE_SEGMENT[resourceName] ?? resourceName.toLowerCase();
 }
 
+// Fail fast on drift between the mapping registry and these engine-local tables. Without this, a new
+// mapping silently falls back to `.toLowerCase()` for its URL segment or is wrongly treated as
+// top-level (missing from PROJECT_SCOPED), producing wrong endpoints at runtime instead of at boot.
+for (const m of MAPPINGS) {
+  if (!(m.procoreResource in RESOURCE_SEGMENT)) {
+    throw new Error(`Mapping "${m.key}": procoreResource "${m.procoreResource}" has no RESOURCE_SEGMENT entry`);
+  }
+  if (m.projectIdField && !PROJECT_SCOPED.has(m.procoreResource)) {
+    throw new Error(`Mapping "${m.key}": has projectIdField but "${m.procoreResource}" is not in PROJECT_SCOPED`);
+  }
+}
+
 /**
  * Read an own property from a (possibly attacker-controlled) CDC field bag, never traversing the
  * prototype chain — so a `__proto__`/`constructor` key in the payload can't leak inherited values.
  */
 function readField(obj: Record<string, unknown>, key: string): unknown {
   return Object.prototype.hasOwnProperty.call(obj, key) ? Reflect.get(obj, key) : undefined;
+}
+
+/** A value safe to interpolate into a Procore URL path (a record/project id). */
+function isIdLike(v: unknown): v is string | number {
+  return (typeof v === "string" && v.length > 0) || (typeof v === "number" && Number.isFinite(v));
 }
 
 /**
@@ -235,11 +253,12 @@ export class SyncEngine {
       return { status: "ignored", detail: "reverse delete not propagated (Procore is the system of record)" };
     }
 
-    // Project-scoped reverse writes need the Procore project id, carried on the SF record.
+    // Project-scoped reverse writes need the Procore project id, carried on the SF record. Validate
+    // it's a real id (string/number) — never interpolate an object/array/bool into a URL path.
     const projectId = projectScoped && mapping.projectIdField ? readField(event.fields, mapping.projectIdField) : undefined;
-    if (projectScoped && (projectId === undefined || projectId === null)) {
-      this.log("warning", `reverse sync ignored: ${mapping.salesforceObject} is missing ${mapping.projectIdField}`);
-      return { status: "ignored", detail: `reverse sync needs ${mapping.projectIdField} (Procore project id)` };
+    if (projectScoped && !isIdLike(projectId)) {
+      this.log("warning", `reverse sync ignored: ${mapping.salesforceObject} has no valid ${mapping.projectIdField}`);
+      return { status: "ignored", detail: `reverse sync needs a valid ${mapping.projectIdField} (Procore project id)` };
     }
     const pid = projectId as string | number;
 
@@ -251,7 +270,7 @@ export class SyncEngine {
     }
 
     const procoreId = readField(event.fields, mapping.sfExternalIdField);
-    const hasId = procoreId !== undefined && procoreId !== null;
+    const hasId = isIdLike(procoreId);
 
     // CREATE only when there is no existing Procore id; otherwise upsert-by-id (idempotent).
     if (event.changeType === "CREATE" && !hasId) {
@@ -270,6 +289,9 @@ export class SyncEngine {
 
     // Skip a no-op reverse write (e.g. the CDC echo of our own forward sync) and keep the link hash
     // current, so the forward webhook that follows this write doesn't bounce the same value back.
+    // NOTE: this hash covers only the fields present on the event; Salesforce CDC sends PARTIAL
+    // update payloads, so this is a best-effort echo suppressor, not a guarantee — production should
+    // use CDC `changeOrigin` for authoritative loop suppression (see SPEC §8a).
     const sfBag: Record<string, unknown> = {};
     for (const f of mapping.fields) {
       if (Object.prototype.hasOwnProperty.call(event.fields, f.salesforce)) sfBag[f.salesforce] = readField(event.fields, f.salesforce);
@@ -295,29 +317,36 @@ export class SyncEngine {
    * Reconciliation backstop (spec §5): periodic delta sweep that catches webhook drops
    * (at-least-once ≠ exactly-once). Phase 5 wires this to a cron trigger.
    */
-  async reconcileProjects(signal?: AbortSignal): Promise<{ scanned: number; upserted: number; cancelled?: boolean }> {
+  async reconcileProjects(signal?: AbortSignal): Promise<{ scanned: number; upserted: number; failed: number; cancelled?: boolean }> {
     const mapping = mappingForProcoreResource("Projects");
-    if (!mapping) return { scanned: 0, upserted: 0 };
+    if (!mapping) return { scanned: 0, upserted: 0, failed: 0 };
     const projects = (await this.procore.listProjects()) as Array<Record<string, unknown>>;
     this.log("info", `reconcile: scanning ${projects.length} projects`);
     let upserted = 0;
+    let failed = 0;
     for (const project of projects) {
       if (signal?.aborted) {
         this.log("warning", `reconcile cancelled after ${upserted}/${projects.length}`);
-        return { scanned: projects.length, upserted, cancelled: true };
+        return { scanned: projects.length, upserted, failed, cancelled: true };
       }
       const id = project.id;
       if (id === undefined) continue;
-      await this.salesforce.upsertByExternalId(
-        mapping.salesforceObject,
-        mapping.sfExternalIdField,
-        String(id),
-        procoreToSalesforce(mapping, project),
-      );
-      upserted += 1;
+      // Best-effort: one bad record must not abort the whole sweep (the sweep IS the recovery path).
+      try {
+        await this.salesforce.upsertByExternalId(
+          mapping.salesforceObject,
+          mapping.sfExternalIdField,
+          String(id),
+          procoreToSalesforce(mapping, project),
+        );
+        upserted += 1;
+      } catch (e) {
+        failed += 1;
+        this.log("error", `reconcile: failed project ${String(id)}`, { error: e instanceof Error ? e.message : String(e) });
+      }
     }
-    this.log("info", `reconcile: upserted ${upserted}/${projects.length}`);
-    return { scanned: projects.length, upserted };
+    this.log("info", `reconcile: upserted ${upserted}/${projects.length} (failed ${failed})`);
+    return { scanned: projects.length, upserted, failed };
   }
 
   /**
@@ -326,7 +355,7 @@ export class SyncEngine {
    * the featured vertical: it gives the legal/CRM side a live, queryable mirror of every
    * executed agreement and its status. Returns per-object counts. Same machinery as financials.
    */
-  async syncLegalDocuments(projectId: string | number, signal?: AbortSignal): Promise<{ synced: number; byObject: Record<string, number> }> {
+  async syncLegalDocuments(projectId: string | number, signal?: AbortSignal): Promise<{ synced: number; byObject: Record<string, number>; errors?: string[] }> {
     return this.syncProjectVertical(LEGAL_MAPPING_KEYS, projectId, signal);
   }
 
@@ -335,7 +364,7 @@ export class SyncEngine {
    * into their Salesforce custom objects via per-record REST upsert. For high-volume line items,
    * SalesforceClient.bulkUpsertJob (Bulk API 2.0) is the better tool. Returns per-object counts.
    */
-  async syncFinancials(projectId: string | number, signal?: AbortSignal): Promise<{ synced: number; byObject: Record<string, number> }> {
+  async syncFinancials(projectId: string | number, signal?: AbortSignal): Promise<{ synced: number; byObject: Record<string, number>; errors?: string[] }> {
     return this.syncProjectVertical(FINANCIAL_MAPPING_KEYS, projectId, signal);
   }
 
@@ -349,27 +378,39 @@ export class SyncEngine {
     keys: readonly string[],
     projectId: string | number,
     signal?: AbortSignal,
-  ): Promise<{ synced: number; byObject: Record<string, number> }> {
+  ): Promise<{ synced: number; byObject: Record<string, number>; errors?: string[] }> {
     const byObject: Record<string, number> = {};
+    const errors: string[] = [];
     let synced = 0;
     for (const key of keys) {
       if (signal?.aborted) break;
       const m = mappingByKey(key);
       if (!m) continue;
-      const records = (await this.procore.listProjectResource(segmentFor(m.procoreResource), projectId)) as Array<Record<string, unknown>>;
-      const rows = records
-        .filter((r) => r.id !== undefined)
-        .map((r) => {
-          const sf = procoreToSalesforce(m, r);
-          // Stamp the project id so the SF record round-trips for bidirectional reverse sync.
-          if (m.projectIdField) sf[m.projectIdField] = String(projectId);
-          return { __externalId: String(r.id), ...sf };
-        });
-      if (rows.length) await this.salesforce.bulkUpsert(m.salesforceObject, m.sfExternalIdField, rows);
-      byObject[m.salesforceObject] = rows.length;
-      synced += rows.length;
+      // One failing object type must not abandon the rest of the vertical; record the error and
+      // report a per-object count of what ACTUALLY synced (not what was attempted).
+      try {
+        const records = (await this.procore.listProjectResource(segmentFor(m.procoreResource), projectId)) as Array<Record<string, unknown>>;
+        const rows = records
+          .filter((r) => r.id !== undefined)
+          .map((r) => {
+            const sf = procoreToSalesforce(m, r);
+            // Stamp the project id so the SF record round-trips for bidirectional reverse sync.
+            if (m.projectIdField) sf[m.projectIdField] = String(projectId);
+            return { __externalId: String(r.id), ...sf };
+          });
+        const { processed, failed } = rows.length
+          ? await this.salesforce.bulkUpsert(m.salesforceObject, m.sfExternalIdField, rows)
+          : { processed: 0, failed: 0 };
+        byObject[m.salesforceObject] = processed;
+        synced += processed;
+        if (failed > 0) errors.push(`${m.salesforceObject}: ${failed} record(s) failed`);
+      } catch (e) {
+        byObject[m.salesforceObject] = 0;
+        errors.push(`${m.salesforceObject}: ${e instanceof Error ? e.message : String(e)}`);
+        this.log("error", `vertical sync failed for ${m.salesforceObject}`, { error: e instanceof Error ? e.message : String(e) });
+      }
     }
-    return { synced, byObject };
+    return { synced, byObject, ...(errors.length ? { errors } : {}) };
   }
 
   /** Create a Salesforce Case from a Procore RFI (project-scoped). */

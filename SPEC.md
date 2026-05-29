@@ -215,6 +215,43 @@ These shape behavior and have no single right answer — flagged for your input 
 - **Phase 5 — Reliability:** reconciliation cron, conflict resolution, observability, soft-deletes.
 - **Phase 6 — Hardening:** rate-limit/governor-limit backoff, secrets, load test, deploy to Workers.
 
+## 8a. Production-hardening roadmap for bidirectional sync (deep-research-backed, 2026-05-29)
+
+A multi-source, adversarially-verified research pass surfaced four conclusions that bound how far the
+current bidirectional path can be trusted, and what production-grade requires. These are **documented,
+not yet implemented** — the current code is honest Phase-0/dev grade.
+
+1. **Strong-consistency state (dedup + link/hash) must move to Durable Objects.** The dedup and link
+   stores today use Cloudflare KV, which is eventually consistent (≈60s convergence, ~1 write/s/key,
+   no atomic CAS). The `get→write→set` is a real TOCTOU: concurrent webhook retries can both pass
+   dedup and double-process — and a reverse CREATE without a Procore id would then double-insert. The
+   fix is DO-backed, single-threaded storage (input gates serialize the read-modify-write), following
+   Stripe's idempotency-key + cached-result-replay pattern. *(Sources: Cloudflare DO/KV docs; Stripe.)*
+
+2. **Salesforce CDC sends PARTIAL update payloads.** UPDATE change events carry only `changedFields`
+   + `LastModifiedDate`, not the full record. Consequences for the reverse path: (a) the echo-skip
+   hash here is computed over only the fields present on the event, so it is a **heuristic**, not an
+   exact match against the forward hash — it suppresses obvious echoes but is not a guarantee;
+   (b) create-vs-update must be driven by `changeType` (CREATE/UPDATE/DELETE/UNDELETE), which we do;
+   (c) **gap/overflow** events signal dropped changes and require a full record re-read; (d) events are
+   ordered only for *resume* by replay-id within a 72-hour window — there is **no durable global
+   ordering**, so `updatedAt`/version ordering cannot be relied on; (e) `changeOrigin` is the
+   documented loop-suppression mechanism and should replace hash-heuristic echo suppression.
+   *(Sources: Salesforce CDC / Change Event developer docs.)*
+
+3. **Last-write-wins is unsafe; conflict resolution needs field-level ownership.** Wall-clock LWW
+   silently loses data under clock drift/partition. A production policy should use per-field
+   source-of-truth (e.g. Procore owns the document/financials, Salesforce owns review/approval
+   outcomes), version vectors for causal ordering, and tombstone-style timestamped delete markers if
+   reverse-delete is ever re-enabled. `src/sync/conflict.ts` is the seam; it is **not yet wired** into
+   `handleSalesforceChange`. *(Sources: Riak/Basho "clocks are bad"; Cassandra tombstones; iPaaS
+   echo-loop guidance.)*
+
+4. **Procore write endpoints remain UNVERIFIED.** The research could not confirm Procore REST
+   resources/verbs for contract/insurance/lien-waiver/compliance documents or webhook signature
+   semantics from primary sources. The `[NEEDS LIVE VERIFICATION]` tags stand — confirm against a live
+   Procore developer account before any production write-back.
+
 ## 9. Verification checklist before production
 - [ ] Re-verify every `[NEEDS LIVE VERIFICATION]` Procore/SF contract against live developer docs.
 - [ ] Confirm Procore rate limits + Salesforce daily API/governor limits for expected volume.

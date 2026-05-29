@@ -23,7 +23,7 @@ npm install --legacy-peer-deps   # required (Agents SDK optional peer)
 npm run lint                     # ESLint (TS + security) — must be 0 errors
 npm run typecheck                # node + worker targets — must pass
 npm test                         # Vitest — must be all green
-npm run test:coverage            # coverage gates 95/95/85/95 (169 tests)
+npm run test:coverage            # coverage gates 95/95/85/95 (177 tests)
 npm run worker:deploy            # wrangler deploy (Cloudflare)
 ```
 

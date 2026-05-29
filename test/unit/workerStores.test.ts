@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PropsTokenStore, KVDedupStore, type KVLike } from "../../src/worker/stores.js";
+import { PropsTokenStore, KVDedupStore, KVLinkStore, type KVLike } from "../../src/worker/stores.js";
 
 class FakeKV implements KVLike {
   store = new Map<string, string>();
@@ -47,5 +47,25 @@ describe("KVDedupStore", () => {
     expect(await dedup.markIfNew("e1")).toBe(true);
     expect(await dedup.markIfNew("e1")).toBe(false);
     expect(kv.puts[0]).toMatchObject({ key: "dedup:e1", opts: { expirationTtl: 3600 } });
+  });
+});
+
+describe("KVLinkStore", () => {
+  it("round-trips a link by mapping key + procore id (link: prefix)", async () => {
+    const kv = new FakeKV();
+    const links = new KVLinkStore(kv);
+    expect(await links.get("contract_document", "55")).toBeUndefined();
+    await links.set("contract_document", { procoreId: "55", salesforceId: "a06x", lastHash: "abc123" });
+    expect(kv.puts[0]!.key).toBe("link:contract_document::55");
+    const got = await links.get("contract_document", "55");
+    expect(got).toEqual({ procoreId: "55", salesforceId: "a06x", lastHash: "abc123" });
+  });
+
+  it("isolates links by mapping key", async () => {
+    const kv = new FakeKV();
+    const links = new KVLinkStore(kv);
+    await links.set("lien_waiver", { procoreId: "55", lastHash: "h1" });
+    expect(await links.get("contract_document", "55")).toBeUndefined(); // same id, different mapping
+    expect((await links.get("lien_waiver", "55"))?.lastHash).toBe("h1");
   });
 });

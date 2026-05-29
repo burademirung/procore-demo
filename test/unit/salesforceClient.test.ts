@@ -87,6 +87,19 @@ describe("SalesforceClient", () => {
     expect(JSON.parse(mock.calls[0]!.body!)).toEqual({ Amount__c: 10 }); // __externalId stripped
   });
 
+  it("bulkUpsert continues past a failed record and reports the failed count", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([
+      { match: "/sobjects/X__c/Id__c/L1", responses: { status: 400, text: "validation error" } },
+      { match: "/sobjects/X__c/", responses: { json: { id: "x", success: true } } },
+    ]);
+    const r = await client.bulkUpsert("X__c", "Id__c", [
+      { __externalId: "L1", a: 1 },
+      { __externalId: "L2", a: 2 },
+    ]);
+    expect(r).toEqual({ processed: 1, failed: 1 }); // L1 failed, L2 still written
+  });
+
   it("runs a real Bulk API 2.0 upsert job (create → upload CSV → complete → poll)", async () => {
     const client = await sfClient();
     mock = installFetchMock([

@@ -4,6 +4,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { loadConfig } from "../config.js";
 import { InMemoryTokenStore } from "../auth/tokenStore.js";
 import { InMemoryDedupStore } from "../sync/dedup.js";
+import { InMemoryLinkStore } from "../sync/linkStore.js";
+import { InMemoryAuditLog } from "../sync/audit.js";
 import { ProcoreClient } from "../clients/procore.js";
 import { SalesforceClient } from "../clients/salesforce.js";
 import { SyncEngine, type ProcoreWebhookEvent } from "../sync/engine.js";
@@ -22,9 +24,15 @@ const cfg = loadConfig(process.env);
 // Dependency wiring (dev: in-memory stores; swap for KV/Postgres in production).
 const tokens = new InMemoryTokenStore();
 const dedup = new InMemoryDedupStore();
+const links = new InMemoryLinkStore(); // long-lived process → real no-op-skip / echo suppression
+const audit = new InMemoryAuditLog();
 const procore = new ProcoreClient(cfg, tokens);
 const salesforce = new SalesforceClient(cfg, tokens);
-const sync = new SyncEngine(procore, salesforce, dedup);
+const sync = new SyncEngine(procore, salesforce, dedup, {
+  links,
+  audit,
+  log: (level, message, data) => console.log(`[sync:${level}] ${message}`, data ?? ""),
+});
 
 // One transport per MCP session, keyed by the mcp-session-id header.
 const transports = new Map<string, StreamableHTTPServerTransport>();

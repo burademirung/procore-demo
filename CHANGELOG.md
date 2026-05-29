@@ -3,6 +3,38 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [0.6.3] — 2026-05-29 — Third review pass: resilience, wiring, honesty (multi-agent + research)
+
+Fixes from five parallel expert reviews (concurrency, silent-failures, type-design, test-quality,
+MCP/auth) plus a deep-research pass on production bidirectional-sync architecture.
+
+### Fixed
+- **Wired the LinkStore into production** — the v0.6.2 echo-skip/hash logic was DEAD CODE (both
+  entrypoints built the engine without `opts.links`). Node now uses `InMemoryLinkStore` + audit; the
+  Worker uses a new KV-backed `KVLinkStore`. So no-op skip / echo suppression actually run now.
+- **Per-iteration resilience + truthful counts** — `syncProjectVertical` (one failing object type no
+  longer abandons the rest; `byObject` reflects records ACTUALLY written; failures collected in
+  `errors[]`), `reconcileProjects` (continues past a bad record; returns `failed`), and
+  `bulkUpsert` (continues per record; returns `{processed, failed}`).
+- **Cross-system search surfaces errors** instead of masking an auth/down failure as an empty result
+  (which could lead an agent to create a duplicate).
+- **Reverse-path id validation** — `isIdLike` guard rejects non-id (object/empty) project/record ids
+  before they're interpolated into a Procore URL.
+- **Mapping↔engine drift guard** — load-time assertion that every mapping has a `RESOURCE_SEGMENT`
+  entry and that `projectIdField` implies `PROJECT_SCOPED` membership.
+- **Honesty** — `serverInfo.version` 0.5.0→0.6.3; corrected the AES-256-GCM "at rest" claim (it's
+  reserved/Phase-1, not implemented; grant props are encrypted by the OAuth provider); SPEC §8a now
+  documents the research-backed roadmap (DO-backed strong-consistency dedup/link, CDC partial-payload
+  + `changeOrigin` loop suppression, field-ownership conflict resolution over LWW, Procore writes
+  still unverified).
+- Suite 169 → **177** passing; branch coverage held above the 85% gate.
+
+### Documented (not yet built — Phase 1/4/5, now research-backed)
+DO-backed strong-consistency dedup/link (KV TOCTOU), token-refresh single-flight + durable write-back,
+queue-based durable webhook retry, `conflict.ts` wired with field-ownership, CDC partial-payload
+handling + gap/overflow re-read, and the `SalesforceChangeEvent` discriminated union with `sfRecordId`
+for reverse-create write-back. See SPEC §8a.
+
 ## [0.6.2] — 2026-05-29 — Second review pass: security & robustness
 
 A follow-up review-and-fix round.

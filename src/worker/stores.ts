@@ -1,5 +1,6 @@
 import type { TokenStore, Provider, ProviderToken } from "../auth/tokenStore.js";
 import type { DedupStore } from "../sync/dedup.js";
+import type { LinkStore, RecordLink } from "../sync/linkStore.js";
 
 /**
  * Cloudflare-native store implementations.
@@ -72,5 +73,25 @@ export class KVDedupStore implements DedupStore {
     if ((await this.kv.get(key)) !== null) return false;
     await this.kv.put(key, "1", { expirationTtl: this.ttlSeconds });
     return true;
+  }
+}
+
+/**
+ * KV-backed link/hash store so the engine's no-op skip + echo suppression actually run in the
+ * Worker (where each request builds a fresh engine, so an in-memory store would be useless).
+ * NOTE: KV is eventually consistent — the get→write→set is not atomic across isolates; for strict
+ * correctness under concurrency this should move to Durable Object storage (Phase 4, see SPEC §5).
+ */
+export class KVLinkStore implements LinkStore {
+  constructor(private readonly kv: KVLike) {}
+  private key(mappingKey: string, procoreId: string) {
+    return `link:${mappingKey}::${procoreId}`;
+  }
+  async get(mappingKey: string, procoreId: string): Promise<RecordLink | undefined> {
+    const raw = await this.kv.get(this.key(mappingKey, procoreId));
+    return raw ? (JSON.parse(raw) as RecordLink) : undefined;
+  }
+  async set(mappingKey: string, link: RecordLink): Promise<void> {
+    await this.kv.put(this.key(mappingKey, link.procoreId), JSON.stringify(link));
   }
 }

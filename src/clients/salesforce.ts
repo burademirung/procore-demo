@@ -193,14 +193,20 @@ export class SalesforceClient {
     sobject: string,
     externalIdField: string,
     records: Array<Record<string, unknown> & { __externalId: string }>,
-  ): Promise<{ processed: number }> {
+  ): Promise<{ processed: number; failed: number }> {
     let processed = 0;
+    let failed = 0;
     for (const rec of records) {
       const { __externalId, ...fields } = rec;
-      await this.upsertByExternalId(sobject, externalIdField, __externalId, fields);
-      processed += 1;
+      // Best-effort per record: one rejected upsert (validation rule, FLS) must not abandon the rest.
+      try {
+        await this.upsertByExternalId(sobject, externalIdField, __externalId, fields);
+        processed += 1;
+      } catch {
+        failed += 1;
+      }
     }
-    return { processed };
+    return { processed, failed };
   }
 
   /**

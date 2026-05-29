@@ -72,7 +72,7 @@ describe("SyncEngine.reconcileProjects", () => {
       { match: "/sobjects/Procore_Project__c/", responses: { json: { id: "x", success: true } } },
     ]);
     const result = await sync.reconcileProjects();
-    expect(result).toEqual({ scanned: 2, upserted: 2 });
+    expect(result).toEqual({ scanned: 2, upserted: 2, failed: 0 });
     expect(mock.callsFor("/sobjects/Procore_Project__c/")).toHaveLength(2);
   });
 
@@ -83,7 +83,18 @@ describe("SyncEngine.reconcileProjects", () => {
       { match: "/sobjects/Procore_Project__c/", responses: { json: { id: "x", success: true } } },
     ]);
     const result = await sync.reconcileProjects();
-    expect(result).toEqual({ scanned: 2, upserted: 1 });
+    expect(result).toEqual({ scanned: 2, upserted: 1, failed: 0 });
+  });
+
+  it("continues past a failing project and reports the failed count (best-effort sweep)", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects", responses: { json: [{ id: 1 }, { id: 2 }] } },
+      { match: "/sobjects/Procore_Project__c/Procore_Project_Id__c/1", responses: { status: 400, text: "validation error" } },
+      { match: "/sobjects/Procore_Project__c/", responses: { json: { id: "x", success: true } } },
+    ]);
+    const result = await sync.reconcileProjects();
+    expect(result).toEqual({ scanned: 2, upserted: 1, failed: 1 }); // project 2 still synced after 1 failed
   });
 });
 
@@ -146,6 +157,20 @@ describe("SyncEngine.syncLegalDocuments", () => {
     const result = await sync.syncLegalDocuments(7);
     expect(result.synced).toBe(0);
     expect(mock.callsFor("/sobjects/")).toHaveLength(0);
+  });
+
+  it("continues past a failing object type and reports it in errors (partial success)", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([
+      // contract_documents (first legal key) fails to list; the rest succeed.
+      { match: "/rest/v1.0/projects/7/contract_documents", responses: { status: 400, text: "bad request" } },
+      { match: "/rest/v1.0/projects/7/", responses: { json: [{ id: 1, status: "ok" }] } },
+      { match: "/sobjects/", responses: { json: { id: "x", success: true } } },
+    ]);
+    const result = await sync.syncLegalDocuments(7);
+    expect(result.byObject["Procore_Contract_Document__c"]).toBe(0); // failed type counted as 0, not abandoned
+    expect(result.errors?.some((e) => e.includes("Procore_Contract_Document__c"))).toBe(true);
+    expect(result.synced).toBeGreaterThan(0); // other legal types still synced
   });
 });
 
@@ -407,6 +432,20 @@ describe("SyncEngine.handleSalesforceChange (reverse: SF → Procore)", () => {
     expect(r.status).toBe("ignored");
     expect(r.detail).toContain("Procore_Project_Id__c");
     expect(mock.calls).toHaveLength(0);
+  });
+
+  it("ignores a project-scoped reverse change whose project id is not a valid id (e.g. empty string)", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([{ match: "__never__", responses: { json: {} } }]);
+    const r = await sync.handleSalesforceChange({
+      id: "bad-pid",
+      sobject: "Procore_Contract_Document__c",
+      changeType: "CREATE",
+      fields: { Name: "X", Procore_Project_Id__c: "" }, // present but not a usable id
+    });
+    expect(r.status).toBe("ignored");
+    expect(r.detail).toContain("valid");
+    expect(mock.calls).toHaveLength(0); // never builds a /projects//... URL
   });
 });
 

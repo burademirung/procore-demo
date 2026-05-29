@@ -7,7 +7,7 @@ import { ProcoreClient } from "../clients/procore.js";
 import { SalesforceClient } from "../clients/salesforce.js";
 import { SyncEngine, type ProcoreWebhookEvent } from "../sync/engine.js";
 import { buildMcpServer } from "../mcp/server.js";
-import { PropsTokenStore, KVDedupStore, type OAuthProps } from "./stores.js";
+import { PropsTokenStore, KVDedupStore, KVLinkStore, type OAuthProps } from "./stores.js";
 import { verifyWebhookSignature } from "../security/webhookSignature.js";
 import { withSecurityHeaders } from "../security/headers.js";
 
@@ -56,9 +56,10 @@ export class ProcoreSalesforceMCP extends McpAgent<Env, unknown, OAuthProps> {
     const cfg = loadConfig(this.env as unknown as Record<string, string | undefined>);
     const tokens = new PropsTokenStore(tenantId, props);
     const dedup = new KVDedupStore(this.env.DEDUP_KV);
+    const links = new KVLinkStore(this.env.DEDUP_KV);
     const procore = new ProcoreClient(cfg, tokens);
     const salesforce = new SalesforceClient(cfg, tokens);
-    const sync = new SyncEngine(procore, salesforce, dedup);
+    const sync = new SyncEngine(procore, salesforce, dedup, { links });
 
     this.server = buildMcpServer({ procore, salesforce, sync });
   }
@@ -112,8 +113,13 @@ async function handleDefault(req: Request, env: Env, ctx: ExecutionContext): Pro
             new ProcoreClient(cfg, tokens),
             new SalesforceClient(cfg, tokens),
             new KVDedupStore(env.DEDUP_KV),
+            { links: new KVLinkStore(env.DEDUP_KV), log: (level, message, data) => console.log(`[sync:${level}] ${message}`, data ?? "") },
           );
-          await sync.handleProcoreWebhook(event).catch((e) => console.error("[webhook]", e));
+          // Background failure can't be returned to Procore (already ACKed); log with context so it's
+          // findable. Durable retry via Cloudflare Queues is the Phase-4 upgrade (see SPEC §5).
+          await sync
+            .handleProcoreWebhook(event)
+            .catch((e) => console.error("[webhook] sync failed", { eventId: event.id, resource: event.resource_name, error: e instanceof Error ? e.message : String(e) }));
         })(),
       );
       return new Response("accepted", { status: 202 });

@@ -211,6 +211,16 @@ describe("MCP advanced capabilities", () => {
     expect(firstText(res as never)).toContain("Disallowed");
   });
 
+  it("TOOL: upload_contract_file rejects an over-limit payload before decoding", async () => {
+    const tooBig = "A".repeat(28_000_001); // > MAX_UPLOAD_B64_LEN; guard must fire before atob
+    const res = await conn.client.callTool({
+      name: "upload_contract_file",
+      arguments: { recordId: "800", fileName: "big.pdf", contentBase64: tooBig },
+    });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    expect(firstText(res as never)).toContain("too large");
+  });
+
   it("TOOL: upload_contract_file rejects invalid base64 (no unhandled throw)", async () => {
     const res = await conn.client.callTool({
       name: "upload_contract_file",
@@ -287,6 +297,19 @@ describe("MCP advanced capabilities", () => {
     expect(payload.query).toBe("Riverside");
     expect(payload.procore).toHaveLength(1);
     expect(payload.salesforce.searchRecords).toHaveLength(1);
+    expect(payload.errors).toBeUndefined();
+  });
+
+  it("RESOURCE: cross-system search SURFACES a side's error instead of masking it as empty", async () => {
+    // Salesforce auth fails; Procore succeeds. The result must flag the SF error, not return [] silently.
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects", responses: { json: [{ id: 1, name: "Riverside Tower" }] } },
+      { match: "/services/data/v62.0/search", responses: { status: 401, json: [{ errorCode: "INVALID_SESSION_ID", message: "Session expired" }] } },
+    ]);
+    const read = await conn.client.readResource({ uri: "conduit://search/Riverside" });
+    const payload = JSON.parse(read.contents[0]!.text as string);
+    expect(payload.procore).toHaveLength(1);
+    expect(payload.errors?.salesforce).toBeTruthy(); // failure is reported, not hidden
   });
 
   it("ELICITATION: merge decision combines both values", async () => {

@@ -69,7 +69,7 @@ function soqlLiteral(value: string): string {
 
 export function buildMcpServer(deps: Deps): McpServer {
   const server = new McpServer(
-    { name: "procore-salesforce-mcp", version: "0.5.0" },
+    { name: "procore-salesforce-mcp", version: "0.6.3" },
     { capabilities: { logging: {}, resources: { subscribe: true, listChanged: true } } },
   );
 
@@ -98,7 +98,7 @@ export function buildMcpServer(deps: Deps): McpServer {
       description:
         "Upsert a project's legal documents — contracts, insurance certificates, lien waivers and compliance records — into Salesforce custom objects by external id. Gives legal/CRM teams a live, queryable mirror of every executed agreement and its status.",
       inputSchema: { projectId: z.union([z.string(), z.number()]) },
-      outputSchema: { synced: z.number(), byObject: z.record(z.string(), z.number()) },
+      outputSchema: { synced: z.number(), byObject: z.record(z.string(), z.number()), errors: z.array(z.string()).optional() },
       annotations: { idempotentHint: true, destructiveHint: false, openWorldHint: true },
     },
     async ({ projectId }, extra) => ok(await deps.sync.syncLegalDocuments(projectId, extra.signal)),
@@ -268,7 +268,7 @@ export function buildMcpServer(deps: Deps): McpServer {
       title: "Run reconciliation sweep",
       description: "Delta-sweep Procore projects into Salesforce to catch missed webhooks. Reports progress.",
       inputSchema: { scope: z.enum(["projects"]).default("projects") },
-      outputSchema: { scanned: z.number(), upserted: z.number(), cancelled: z.boolean().optional() },
+      outputSchema: { scanned: z.number(), upserted: z.number(), failed: z.number(), cancelled: z.boolean().optional() },
       annotations: { idempotentHint: true, destructiveHint: false, openWorldHint: true },
     },
     async (_args, extra) => {
@@ -297,7 +297,7 @@ export function buildMcpServer(deps: Deps): McpServer {
       title: "Sync Procore financials → Salesforce",
       description: "Upsert a project's prime contracts, commitments, change orders and invoices into Salesforce custom objects.",
       inputSchema: { projectId: z.union([z.string(), z.number()]) },
-      outputSchema: { synced: z.number(), byObject: z.record(z.string(), z.number()) },
+      outputSchema: { synced: z.number(), byObject: z.record(z.string(), z.number()), errors: z.array(z.string()).optional() },
       annotations: { idempotentHint: true, destructiveHint: false, openWorldHint: true },
     },
     async ({ projectId }, extra) => ok(await deps.sync.syncFinancials(projectId, extra.signal)),
@@ -574,15 +574,26 @@ export function buildMcpServer(deps: Deps): McpServer {
     { title: "Cross-system search", description: "Search projects/companies/contacts across Procore and Salesforce." },
     async (uri, variables) => {
       const query = templateVar(variables.query);
-      const [procore, salesforce] = await Promise.all([
-        deps.procore.search(query).catch(() => []),
-        deps.salesforce.search(query).catch(() => ({ searchRecords: [] })),
-      ]);
-      return {
-        contents: [
-          { uri: uri.href, mimeType: "application/json", text: JSON.stringify({ query, procore, salesforce }, null, 2) },
-        ],
+      // Settle each side independently and SURFACE failures — masking an auth/down error as an empty
+      // result is dangerous (an agent may "create" a record that actually already exists).
+      const settle = async <T>(p: Promise<T>): Promise<{ data: T } | { error: string }> => {
+        try {
+          return { data: await p };
+        } catch (e) {
+          return { error: e instanceof Error ? e.message : String(e) };
+        }
       };
+      const [pc, sf] = await Promise.all([settle(deps.procore.search(query)), settle(deps.salesforce.search(query))]);
+      const errors: Record<string, string> = {};
+      if ("error" in pc) errors.procore = pc.error;
+      if ("error" in sf) errors.salesforce = sf.error;
+      const body = {
+        query,
+        procore: "data" in pc ? pc.data : [],
+        salesforce: "data" in sf ? sf.data : { searchRecords: [] },
+        ...(Object.keys(errors).length ? { errors } : {}),
+      };
+      return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(body, null, 2) }] };
     },
   );
 

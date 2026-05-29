@@ -7,7 +7,7 @@
 | **SAST** (static analysis) | Semgrep (`p/security-audit`, `p/xss`, `p/secrets`) + `eslint-plugin-security` | **0 findings** |
 | **Lint** | ESLint + `typescript-eslint` | **0 errors** |
 | **Type safety** | `tsc` strict (both targets) | passes |
-| **Tests** | Vitest, ~99% lines | 169 passing |
+| **Tests** | Vitest, ~99% lines | 177 passing |
 
 Run them all:
 ```bash
@@ -22,7 +22,7 @@ npx semgrep --config p/security-audit --config p/xss --config p/secrets src publ
 | Threat | Control |
 |---|---|
 | Credential leakage to the agent | Conduit issues its **own** bound token; provider keys never leave the server. |
-| Token theft at rest | AES-256-GCM encryption (`RS_TOKENS_ENC_KEY`); secrets in Wrangler, not git. |
+| Token theft at rest | OAuth grant props encrypted by `@cloudflare/workers-oauth-provider`; secrets in Wrangler, not git. (App-level AES-256-GCM via `RS_TOKENS_ENC_KEY` is reserved/Phase-1, not yet implemented.) |
 | DNS rebinding on the MCP endpoint | `Origin` validation → 403 (spec MUST); `enableDnsRebindingProtection` on the transport. |
 | Auth-code interception | OAuth 2.1 + **PKCE (S256)**. |
 | Forged inbound webhooks | **HMAC-SHA256 signature verification** (timing-safe); **fails closed — 401 when `WEBHOOK_SECRET` is unset** and on signature mismatch, so unauthenticated events can't drive sync writes. |
