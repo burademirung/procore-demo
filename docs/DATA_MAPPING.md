@@ -19,7 +19,8 @@ interface ObjectMapping {
   **bidirectional** (the **featured vertical**). Procore is the document system of record, so the
   forward push (`sync_project_legal_documents`) gives legal/CRM teams a live mirror; the reverse path
   (`sync_salesforce_to_procore` / CDC) writes Salesforce edits — status, approval/review outcomes —
-  back onto the Procore record. The SF record carries `Procore_Id__c` (record) and
+  back onto the Procore record (**create/update only; deletes are not propagated**, to protect the
+  Procore system of record). The SF record carries `Procore_Id__c` (record) and
   `Procore_Project_Id__c` (project) so the reverse write targets the right Procore document.
 - **Master data** (companies, projects, contacts) → **bidirectional**.
 - **Financials & project-management records** (contracts, change orders, RFIs, submittals) →

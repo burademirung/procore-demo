@@ -3,6 +3,7 @@ import { completable } from "@modelcontextprotocol/sdk/server/completable.js";
 import { z } from "zod";
 import type { ProcoreClient, ProcoreWebhookTrigger } from "../clients/procore.js";
 import type { SalesforceClient } from "../clients/salesforce.js";
+import { HttpError } from "../clients/http.js";
 import type { SyncEngine } from "../sync/engine.js";
 import { MAPPINGS, mappingByKey } from "../mapping/mappings.js";
 import { findDuplicates, normalizeEmail, type ContactLike } from "../sync/contacts.js";
@@ -40,9 +41,18 @@ function templateVar(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
+/**
+ * Max base64 payload for a document upload. The hard ceiling is the Cloudflare Worker request body
+ * (~100 MB) and its 128 MB memory limit; we decode the whole string in memory, so we cap well below
+ * that. ~28 MB base64 ≈ ~20 MB binary. (Salesforce ContentVersion itself allows 2 GB, but base64
+ * over MCP's JSON transport into a Worker is the binding constraint — large files need a streaming
+ * or upload-from-URL path, see SPEC §4.)
+ */
+const MAX_UPLOAD_B64_LEN = 28_000_000;
+
 /** Decode base64 (how binary file content arrives over MCP's JSON transport) to raw bytes. */
 function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
+  const bin = atob(b64); // throws on malformed input — callers must guard
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
@@ -99,23 +109,27 @@ export function buildMcpServer(deps: Deps): McpServer {
     {
       title: "Upload a document file to Salesforce & attach it",
       description:
-        "Upload a binary legal document (base64) into Salesforce as a ContentVersion and link it to a record (a Contract, or a synced Procore_Contract_Document__c) via FirstPublishLocationId. Uses REST multipart (up to 2 GB).",
+        "Upload a binary legal document (base64) into Salesforce as a ContentVersion and link it to a record (a Contract, or a synced Procore_Contract_Document__c) via FirstPublishLocationId. REST multipart upload; practical limit ~20 MB (the document is buffered in the Worker — larger files need a streaming/upload-from-URL path).",
       inputSchema: {
         recordId: z.string().describe("Salesforce record id to attach the file to (e.g. a Contract)"),
         fileName: z.string().describe("File name incl. extension, e.g. master-agreement.pdf"),
-        contentBase64: z.string().describe("Base64-encoded file bytes"),
+        contentBase64: z.string().describe("Base64-encoded file bytes (~20 MB max)"),
         title: z.string().optional(),
       },
       outputSchema: { contentVersionId: z.string(), linkedTo: z.string() },
       annotations: { destructiveHint: false, openWorldHint: true },
     },
     async ({ recordId, fileName, contentBase64, title }) => {
-      const res = await deps.salesforce.uploadContentVersion({
-        title: title ?? fileName,
-        fileName,
-        data: base64ToBytes(contentBase64),
-        linkedRecordId: recordId,
-      });
+      if (contentBase64.length > MAX_UPLOAD_B64_LEN) {
+        return errResult(`File too large: ~${Math.round((contentBase64.length * 3) / 4 / 1e6)} MB exceeds the ~20 MB upload limit. Use a streaming/upload-from-URL path for larger files.`);
+      }
+      let data: Uint8Array;
+      try {
+        data = base64ToBytes(contentBase64);
+      } catch {
+        return errResult("Invalid base64 in contentBase64.");
+      }
+      const res = await deps.salesforce.uploadContentVersion({ title: title ?? fileName, fileName, data, linkedRecordId: recordId });
       return ok({ contentVersionId: res.id, linkedTo: recordId });
     },
   );
@@ -205,13 +219,21 @@ export function buildMcpServer(deps: Deps): McpServer {
       try {
         const res = await deps.salesforce.query<Record<string, unknown>>(soql);
         return ok({ available: true, records: res.records });
-      } catch {
-        return ok({
-          available: false,
-          records: [],
-          detail:
-            "DocuSign 'eSignature for Salesforce' managed package not installed (or dsfs__DocuSign_Status__c not queryable) in this org. Note: newer installs use the dfsle__ namespace.",
-        });
+      } catch (e) {
+        // Only treat a missing/unknown sObject as "not installed". Real auth/session/network
+        // failures must surface as errors, not be masked as "DocuSign absent".
+        const body = e instanceof HttpError ? e.body : "";
+        const missingObject =
+          e instanceof HttpError && (e.status === 400 || e.status === 404) && /INVALID_TYPE|dsfs__DocuSign_Status__c|sObject type/i.test(body);
+        if (missingObject) {
+          return ok({
+            available: false,
+            records: [],
+            detail:
+              "DocuSign 'eSignature for Salesforce' managed package not installed (dsfs__DocuSign_Status__c not present). Newer installs use the dfsle__ namespace.",
+          });
+        }
+        return errResult(`Could not query DocuSign status: ${e instanceof Error ? e.message : String(e)}`);
       }
     },
   );

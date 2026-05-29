@@ -126,19 +126,24 @@ is rarely the source of truth for construction documents/financials.
 >
 > **Binary file layer (implemented, 0.5.0 · Tier 1):** `upload_contract_file` uploads the actual
 > document (PDF/DOCX) into Salesforce Files via the REST **multipart** blob-insert to `ContentVersion`
-> (ceiling 2 GB — *not* the ~37.5 MB base64 `VersionData` path) and links it to the record in one
+> (Salesforce ceiling 2 GB, but the practical limit is **~20 MB** — the file is base64-buffered in the
+> Worker; *not* the ~37.5 MB base64 `VersionData` path) and links it to the record in one
 > transaction via `FirstPublishLocationId`. Verified (3-0) against the Salesforce REST blob-insert
 > and ContentVersion object-reference docs. Companion Tier-1 tools (`get_contract`,
 > `list_contracts_by_status`, `submit_for_approval`, `list_approval_processes`,
 > `check_signature_status`) all run on the existing **`api`** scope.
 >
 > **Bidirectional (0.6.0).** Legal mappings are now `bidirectional`. The reverse path
-> (`sync_salesforce_to_procore` → `handleSalesforceChange`) writes Salesforce edits back to Procore:
-> CREATE/UPDATE/DELETE on the project-scoped Procore resource, recovering the Procore record id from
-> `Procore_Id__c` and the project from `Procore_Project_Id__c` (both carried on the SF record). Conflicts
-> resolve last-write-wins by event order; dedup drops replays. `[NEEDS LIVE VERIFICATION]` the Procore
-> **write** endpoints/verbs (POST/PATCH/DELETE under `/projects/{id}/{resource}`), and a production
-> deployment should wire `src/sync/conflict.ts` to the org's real ownership policy.
+> (`sync_salesforce_to_procore` → `handleSalesforceChange`) writes Salesforce edits back to Procore as
+> **CREATE / UPDATE only**, recovering the Procore record id from `Procore_Id__c` and the project from
+> `Procore_Project_Id__c` (both carried on the SF record); a CREATE that already carries a Procore id
+> is an idempotent update, so a replay can't double-insert. The project id is sent in the URL path,
+> never the body. **DELETE is intentionally NOT propagated** SF → Procore — Procore is the document
+> system of record, so a CRM-side delete must not destroy it (mirrors the forward soft-delete intent).
+> Reverse writes are last-writer-wins; **field-level conflict resolution (`src/sync/conflict.ts`) is a
+> provided seam but is NOT yet enforced on this path** — a production deployment should wire it to the
+> org's ownership policy. `[NEEDS LIVE VERIFICATION]` the Procore **write** endpoints/verbs (POST/PATCH
+> under `/projects/{id}/{resource}`).
 >
 > **Tier 2 (roadmap, requires licensing):** the first-party **Salesforce Contracts** (Revenue Cloud)
 > CLM product — clause libraries, `ContractDocumentVersion`, native e-sign send/void — usable only if

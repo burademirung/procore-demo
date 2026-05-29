@@ -64,7 +64,7 @@ Salesforce docs (ContentVersion multipart blob-insert, Process Approvals REST re
 
 | Tool | Input | Output | API used |
 |---|---|---|---|
-| **`upload_contract_file`** | `{ recordId, fileName, contentBase64, title? }` | `{ contentVersionId, linkedTo }` | REST **multipart** → `ContentVersion` (≤2 GB), linked via `FirstPublishLocationId` |
+| **`upload_contract_file`** | `{ recordId, fileName, contentBase64, title? }` | `{ contentVersionId, linkedTo }` | REST **multipart** → `ContentVersion`, linked via `FirstPublishLocationId`. Practical limit **~20 MB** (buffered in the Worker; Salesforce itself allows 2 GB) |
 | `get_contract` | `{ contractId }` | `{ contract }` | `GET /sobjects/Contract/{id}` |
 | `list_contracts_by_status` | `{ status, limit? }` | `{ records, count }` | SOQL on `Contract` (status escaped) |
 | `submit_for_approval` | `{ recordId, comments?, nextApproverIds?, processDefinitionNameOrId? }` | `{ result }` | `POST /process/approvals/` |

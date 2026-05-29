@@ -37,7 +37,7 @@ wrangler secret put RS_TOKENS_ENC_KEY     # 32-byte base64, AES-256-GCM
 ## Deploy
 ```bash
 npm run typecheck                         # node + worker targets
-npm test                                  # 162 tests
+npm test                                  # 165 tests
 wrangler deploy --dry-run --outdir /tmp/build   # validate the bundle (no upload)
 npm run worker:deploy                     # = wrangler deploy
 ```

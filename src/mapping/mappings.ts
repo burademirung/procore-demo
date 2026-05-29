@@ -284,8 +284,26 @@ export function procoreToSalesforce(mapping: ObjectMapping, procoreRecord: Recor
 export function salesforceToProcore(mapping: ObjectMapping, sfRecord: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const f of mapping.fields) {
-    const value = sfRecord[f.salesforce];
+    // Own-property guard (sfRecord is an external CDC payload) — mirror procoreToSalesforce.
+    const value = Object.prototype.hasOwnProperty.call(sfRecord, f.salesforce) ? Reflect.get(sfRecord, f.salesforce) : undefined;
     if (value !== undefined && value !== null) out[f.procore] = value;
   }
   return out;
+}
+
+/**
+ * Fail fast at module load if any mapping uses a field name that could poison a prototype when used
+ * as a dynamic write key (`out[f.procore]`, `sf[m.projectIdField]`). Field names are developer-authored,
+ * so this guards against a future typo/mistake rather than runtime input.
+ */
+const UNSAFE_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+for (const m of MAPPINGS) {
+  const keys = [
+    m.sfExternalIdField,
+    ...(m.projectIdField ? [m.projectIdField] : []),
+    ...m.fields.flatMap((f) => [f.procore, f.salesforce]),
+  ];
+  for (const k of keys) {
+    if (UNSAFE_KEYS.has(k)) throw new Error(`Unsafe mapping field name "${k}" in mapping "${m.key}" (prototype-pollution risk)`);
+  }
 }

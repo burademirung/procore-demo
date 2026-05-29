@@ -39,7 +39,7 @@ MCP 2025-06-18 and 2025-11-25 specifications.
 ## Salesforce-native legal-document operations (0.5.0 · Tier 1, `api` scope)
 Grounded in primary-source deep research; all run on the existing `api` scope — no add-on.
 - **`upload_contract_file`** — upload a binary document (PDF/DOCX) into Salesforce Files via REST
-  **multipart** `ContentVersion` (≤2 GB) and link it to a Contract/record (`FirstPublishLocationId`).
+  **multipart** `ContentVersion` (practical ~20 MB — buffered in the Worker) and link it to a Contract/record (`FirstPublishLocationId`).
 - **`get_contract`** / **`list_contracts_by_status`** — read/query the standard Contract object (SOQL).
 - **`submit_for_approval`** / **`list_approval_processes`** — the Process Approvals REST resource.
 - **`check_signature_status`** — SOQL on the DocuSign managed-package status object; degrades

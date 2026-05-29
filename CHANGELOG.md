@@ -3,6 +3,32 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [0.6.1] — 2026-05-29 — Architecture-review hardening
+
+Fixes from a deep multi-reviewer pass (correctness + security + architecture) of the bidirectional
+and Tier-1 work.
+
+### Fixed
+- **Reverse DELETE is no longer propagated to Procore.** The 0.6.0 generalization had armed reverse
+  *hard*-delete for every bidirectional mapping (incl. `project`/`company`/`contact`) — a Salesforce
+  delete could destroy the Procore system of record, and `notify()` mislabeled it `soft_delete`.
+  `handleSalesforceChange` now returns `ignored` for DELETE (with a warning), giving forward(soft)/
+  reverse(none) symmetry. Procore stays the system of record.
+- **Reverse CREATE is idempotent** — a CREATE event already carrying a `Procore_Id__c` is treated as
+  an update-by-id, so a replay/duplicate can't double-insert.
+- **Project id no longer sent in the reverse write body** (it's in the URL path) — avoids a
+  body/URL conflict.
+- **`upload_contract_file`** now enforces a ~20 MB cap and catches malformed base64 (prevents Worker
+  OOM / unhandled `atob` throw); the misleading "2 GB" claim is corrected to the real practical limit.
+- **`check_signature_status`** no longer swallows auth/session/network errors as "DocuSign not
+  installed" — only a genuine missing-object error returns `available:false`; everything else surfaces.
+- **Prototype-pollution defense** — `salesforceToProcore` now uses an own-property guard, and the
+  mapping registry fails fast at load if any field key is `__proto__`/`constructor`/`prototype`.
+- **Honesty** — docs/demo no longer claim conflict resolution is enforced on the reverse path (it's a
+  provided-but-unwired seam; LWW today) nor that uploads reach 2 GB over MCP.
+
+Suite 162 → **165** passing.
+
 ## [0.6.0] — 2026-05-28 — Bidirectional legal documents (Salesforce → Procore)
 
 Legal documents now sync **both ways**. Procore stays the document system of record; legal/CRM

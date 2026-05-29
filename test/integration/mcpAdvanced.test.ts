@@ -198,6 +198,22 @@ describe("MCP advanced capabilities", () => {
     expect(sc?.detail).toContain("managed package");
   });
 
+  it("TOOL: check_signature_status surfaces real auth errors instead of masking them as 'not installed'", async () => {
+    mock = installFetchMock([{ match: "/services/data/v62.0/query", responses: { status: 401, json: [{ errorCode: "INVALID_SESSION_ID", message: "Session expired or invalid" }] } }]);
+    const res = await conn.client.callTool({ name: "check_signature_status", arguments: { envelopeId: "env-x" } });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    expect(firstText(res as never)).toContain("Could not query DocuSign status");
+  });
+
+  it("TOOL: upload_contract_file rejects invalid base64 (no unhandled throw)", async () => {
+    const res = await conn.client.callTool({
+      name: "upload_contract_file",
+      arguments: { recordId: "800", fileName: "x.pdf", contentBase64: "not valid base64 !!!" },
+    });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    expect(firstText(res as never)).toContain("Invalid base64");
+  });
+
   it("TOOL: sync_procore_financials bulk-syncs financial objects", async () => {
     mock = installFetchMock([
       { match: "/rest/v1.0/projects/7/", responses: { json: [{ id: 1, title: "X", grand_total: 1, status: "o", number: "C", amount: 2, invoice_number: "I", total_amount: 3 }] } },

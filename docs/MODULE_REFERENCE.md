@@ -72,7 +72,7 @@ Rate-limit-aware fetch.
   - `bulkUpsert(sobject, externalIdField, records[]): Promise<{processed}>` — Phase-0 per-record
     loop; real Bulk API 2.0 job is Phase 3. *(Contracts: `[NEEDS LIVE VERIFICATION]`.)*
   - **(0.5.0, Tier 1 — `api` scope)** `uploadContentVersion({title, fileName, data, linkedRecordId?}): Promise<{id, success}>`
-    — REST **multipart** blob-insert to `ContentVersion` (≤2 GB), links via `FirstPublishLocationId`;
+    — REST **multipart** blob-insert to `ContentVersion` (practical ~20 MB, buffered in the Worker; SF allows 2 GB), links via `FirstPublishLocationId`;
     sends auth-only headers so `fetch` sets the multipart boundary. `processApproval({actionType, contextId, comments?, nextApproverIds?, processDefinitionNameOrId?})`
     and `listApprovalProcesses()` — the Process Approvals REST resource. *(All [VERIFIED] against primary Salesforce docs.)*
 
@@ -150,9 +150,11 @@ Boots `loadConfig(process.env)`, in-memory stores, clients, engine, and an HTTP 
 
 ## `src/sync/engine.ts` — added in 0.2.0
 - **`SyncEngineOptions`** `{ audit?, links?, onSynced? }`; constructor accepts them; **`setNotifier(fn)`**.
-- **`handleSalesforceChange(event)`** — reverse (SF CDC → Procore). **(0.6.0)** full CREATE/UPDATE/DELETE:
-  recovers the Procore record id from `sfExternalIdField` and project from `projectIdField`, then writes
-  via the Procore client (project-scoped or top-level). LWW by event order; dedup drops replays.
+- **`handleSalesforceChange(event)`** — reverse (SF CDC → Procore). **(0.6.0)** CREATE/UPDATE only:
+  recovers the Procore record id from `sfExternalIdField` and project from `projectIdField` (own-prop
+  guarded), strips the project id from the body, writes via the Procore client. A CREATE carrying a
+  Procore id is an idempotent update. **DELETE is not propagated** (system-of-record protection). LWW;
+  conflict.ts seam not yet enforced here. dedup drops replays.
 - **`syncLegalDocuments(projectId, signal?)`** ★ (0.4.0) — featured: bulk-upserts the legal-document
   vertical (`LEGAL_MAPPING_KEYS`) into Salesforce. **`syncFinancials(projectId, signal?)`**,
   **`createCaseFromRfi(projectId, rfiId)`**. Both `sync*` methods delegate to the private
