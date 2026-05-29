@@ -46,6 +46,19 @@ export class SalesforceClient {
     return `${instanceUrl}/services/data/${this.cfg.salesforce.apiVersion}`;
   }
 
+  /**
+   * Build a Salesforce OAuth 2.0 web-server authorization URL with the configured client_id and
+   * redirect_uri. Throws if no client id is configured (so the caller returns a clear error rather
+   * than minting a non-functional URL). `scope` is validated by the caller against an allowlist.
+   */
+  authorizeUrl(scope: string): string {
+    const { loginUrl, clientId, redirectUri } = this.cfg.salesforce;
+    if (!clientId) throw new Error("Salesforce client id not configured (SF_CLIENT_ID); cannot build an authorize URL.");
+    const params = new URLSearchParams({ response_type: "code", client_id: clientId, scope });
+    if (redirectUri) params.set("redirect_uri", redirectUri);
+    return `${loginUrl}/services/oauth2/authorize?${params.toString()}`;
+  }
+
   /** SOQL query. */
   async query<T = unknown>(soql: string): Promise<{ records: T[]; done: boolean; nextRecordsUrl?: string }> {
     const { instanceUrl } = await this.session();

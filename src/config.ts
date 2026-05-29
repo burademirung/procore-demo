@@ -17,7 +17,8 @@ const ConfigSchema = z.object({
     .default("http://localhost,http://127.0.0.1")
     .transform((s) => s.split(",").map((o) => o.trim()).filter(Boolean)),
   rsTokensEncKey: z.string().optional(),
-  // Shared secret for verifying inbound webhook HMAC signatures (recommended).
+  // Shared secret for verifying inbound webhook HMAC signatures. REQUIRED to enable webhooks: the
+  // webhook handlers fail closed (401) when this is unset, so a forged POST can't drive sync writes.
   // min(1) so an explicitly-empty value fails loudly rather than silently disabling verification.
   webhookSecret: z.string().min(1).optional(),
 

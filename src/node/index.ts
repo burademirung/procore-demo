@@ -83,13 +83,17 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse): Promise<voi
  */
 async function handleProcoreWebhook(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const raw = await readRawBody(req);
-  // Verify HMAC signature when a secret is configured (rejects forged events).
-  if (cfg.webhookSecret) {
-    const sig = (req.headers["x-procore-signature"] ?? req.headers["x-hub-signature-256"]) as string | undefined;
-    if (!(await verifyWebhookSignature(raw, sig, cfg.webhookSecret))) {
-      res.writeHead(401).end("invalid signature");
-      return;
-    }
+  // Fail closed: never process an unauthenticated webhook (it triggers sync writes). Without a
+  // configured secret a forged POST could drive Salesforce writes — reject instead of accepting.
+  if (!cfg.webhookSecret) {
+    console.error("[webhook] rejected: WEBHOOK_SECRET not configured (set it to enable webhooks)");
+    res.writeHead(401).end("webhook secret not configured");
+    return;
+  }
+  const sig = (req.headers["x-procore-signature"] ?? req.headers["x-hub-signature-256"]) as string | undefined;
+  if (!(await verifyWebhookSignature(raw, sig, cfg.webhookSecret))) {
+    res.writeHead(401).end("invalid signature");
+    return;
   }
   let event: ProcoreWebhookEvent | undefined;
   try {

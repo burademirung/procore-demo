@@ -85,12 +85,15 @@ async function handleDefault(req: Request, env: Env, ctx: ExecutionContext): Pro
 
     if (url.pathname === "/webhooks/procore" && req.method === "POST") {
       const raw = await req.text();
-      // Verify HMAC signature when a secret is configured (rejects forged events).
-      if (env.WEBHOOK_SECRET) {
-        const sig = req.headers.get("x-procore-signature") ?? req.headers.get("x-hub-signature-256");
-        if (!(await verifyWebhookSignature(raw, sig, env.WEBHOOK_SECRET))) {
-          return new Response("invalid signature", { status: 401 });
-        }
+      // Fail closed: never process an unauthenticated webhook. The handler triggers sync writes,
+      // so without a configured secret a forged POST could drive Salesforce writes — reject instead.
+      if (!env.WEBHOOK_SECRET) {
+        console.error("[webhook] rejected: WEBHOOK_SECRET not configured (set it to enable webhooks)");
+        return new Response("webhook secret not configured", { status: 401 });
+      }
+      const sig = req.headers.get("x-procore-signature") ?? req.headers.get("x-hub-signature-256");
+      if (!(await verifyWebhookSignature(raw, sig, env.WEBHOOK_SECRET))) {
+        return new Response("invalid signature", { status: 401 });
       }
       let parsed: ProcoreWebhookEvent | null = null;
       try {

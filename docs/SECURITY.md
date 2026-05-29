@@ -7,7 +7,7 @@
 | **SAST** (static analysis) | Semgrep (`p/security-audit`, `p/xss`, `p/secrets`) + `eslint-plugin-security` | **0 findings** |
 | **Lint** | ESLint + `typescript-eslint` | **0 errors** |
 | **Type safety** | `tsc` strict (both targets) | passes |
-| **Tests** | Vitest, ~99% lines | 165 passing |
+| **Tests** | Vitest, ~99% lines | 169 passing |
 
 Run them all:
 ```bash
@@ -25,7 +25,7 @@ npx semgrep --config p/security-audit --config p/xss --config p/secrets src publ
 | Token theft at rest | AES-256-GCM encryption (`RS_TOKENS_ENC_KEY`); secrets in Wrangler, not git. |
 | DNS rebinding on the MCP endpoint | `Origin` validation → 403 (spec MUST); `enableDnsRebindingProtection` on the transport. |
 | Auth-code interception | OAuth 2.1 + **PKCE (S256)**. |
-| Forged inbound webhooks | **HMAC-SHA256 signature verification** (timing-safe) when `WEBHOOK_SECRET` is set; 401 on mismatch. |
+| Forged inbound webhooks | **HMAC-SHA256 signature verification** (timing-safe); **fails closed — 401 when `WEBHOOK_SECRET` is unset** and on signature mismatch, so unauthenticated events can't drive sync writes. |
 | Search-string (SOSL) injection | Salesforce search escapes SOSL reserved characters before interpolation. |
 | Path traversal in constructed URLs | Procore path components are `encodeURIComponent`-encoded. |
 | Replay / duplicate webhooks | Dedup by event id + upsert-by-External-ID (idempotent). Manual syncs use fresh ids. |

@@ -205,6 +205,12 @@ describe("MCP advanced capabilities", () => {
     expect(firstText(res as never)).toContain("Could not query DocuSign status");
   });
 
+  it("TOOL: authorize_salesforce rejects an over-broad OAuth scope (least privilege)", async () => {
+    const res = await conn.client.callTool({ name: "authorize_salesforce", arguments: { scope: "full" } });
+    expect((res as { isError?: boolean }).isError).toBe(true);
+    expect(firstText(res as never)).toContain("Disallowed");
+  });
+
   it("TOOL: upload_contract_file rejects invalid base64 (no unhandled throw)", async () => {
     const res = await conn.client.callTool({
       name: "upload_contract_file",

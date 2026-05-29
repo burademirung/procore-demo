@@ -5,7 +5,7 @@ client, mapping, and engine code run for real.
 
 ## Run
 ```bash
-npm test                 # 165 tests
+npm test                 # 169 tests
 npm run test:watch       # watch mode
 npm run test:coverage    # enforces thresholds
 ```
@@ -13,7 +13,7 @@ npm run test:coverage    # enforces thresholds
 ## Coverage gates (`vitest.config.ts`)
 Lines 95 · Functions 95 · Branches 85 · Statements 95. Entrypoints (`src/node/index.ts`,
 `src/worker/index.ts`) are excluded — they are I/O bootstrap exercised by integration and manual
-runs. Current: **~98% statements · ~99% lines · ~96% functions · ~87% branches** across 165 tests.
+runs. Current: **~98% statements · ~99% lines · ~96% functions · ~87% branches** across 169 tests.
 
 ## Layout
 ```

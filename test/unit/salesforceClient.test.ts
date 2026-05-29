@@ -209,6 +209,22 @@ describe("SalesforceClient", () => {
     expect(body.requests[0]).toMatchObject({ actionType: "Submit", contextId: "800xx", comments: "Please review", nextApproverIds: ["005x"] });
   });
 
+  it("builds a Salesforce OAuth authorize URL with client_id, response_type, and scope", async () => {
+    const client = await sfClient();
+    const url = client.authorizeUrl("api refresh_token");
+    expect(url).toContain("https://login.salesforce.test/services/oauth2/authorize");
+    expect(url).toContain("response_type=code");
+    expect(url).toContain("client_id=sf-client");
+    expect(url).toContain("scope=api+refresh_token");
+  });
+
+  it("throws when building an authorize URL without a configured client id", async () => {
+    const tokens = new InMemoryTokenStore();
+    await tokens.set("default", "salesforce", { accessToken: "x", instanceUrl: INSTANCE });
+    const client = new SalesforceClient(testConfig({ SF_CLIENT_ID: "" }), tokens);
+    expect(() => client.authorizeUrl("api")).toThrow(/client id/i);
+  });
+
   it("lists approval processes via GET /process/approvals/", async () => {
     const client = await sfClient();
     mock = installFetchMock([{ match: "/process/approvals/", responses: { json: { approvals: [{ object: "Contract" }] } } }]);

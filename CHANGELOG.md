@@ -3,6 +3,24 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [0.6.2] — 2026-05-29 — Second review pass: security & robustness
+
+A follow-up review-and-fix round.
+
+### Fixed / Hardened
+- **Webhooks fail closed.** Both the Worker and Node handlers now reject `/webhooks/procore` with 401
+  when `WEBHOOK_SECRET` is unset (it was silently accepted before) — a forged POST can no longer drive
+  sync writes. `WEBHOOK_SECRET` is now documented as REQUIRED to enable webhooks.
+- **`authorize_salesforce` builds a real, least-privilege URL.** It now injects `client_id` +
+  `redirect_uri` from config (previously omitted → non-functional) and restricts `scope` to an
+  allowlist (`api`, `refresh_token`, `offline_access`, `openid`, `profile`, `email`) — rejecting
+  escalations like `full`/`web`. New `SalesforceClient.authorizeUrl()`.
+- **Reverse echo-skip.** Reverse UPDATE now skips a no-op write via the link hash and updates the link
+  after writing, so the CDC echo of our own forward sync doesn't bounce the same value back (no
+  redundant Procore writes).
+- **`soqlLiteral` strips C0 control characters** (incl. NUL) in addition to escaping quotes.
+- Suite 165 → **169** passing.
+
 ## [0.6.1] — 2026-05-29 — Architecture-review hardening
 
 Fixes from a deep multi-reviewer pass (correctness + security + architecture) of the bidirectional

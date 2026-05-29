@@ -53,14 +53,18 @@ const MAX_UPLOAD_B64_LEN = 28_000_000;
 /** Decode base64 (how binary file content arrives over MCP's JSON transport) to raw bytes. */
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64); // throws on malformed input — callers must guard
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
+  return Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
 }
 
-/** Escape a single-quoted SOQL literal to prevent SOQL injection. */
+/** Least-privilege allowlist of Salesforce OAuth scopes the authorize tool may request. */
+const ALLOWED_SF_SCOPES = new Set(["api", "refresh_token", "offline_access", "openid", "profile", "email"]);
+
+/**
+ * Escape a single-quoted SOQL literal to prevent SOQL injection: strip control characters
+ * (which Salesforce rejects anyway), then escape backslashes before single quotes.
+ */
 function soqlLiteral(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  return value.replace(/[\u0000-\u001f]/g, "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
 export function buildMcpServer(deps: Deps): McpServer {
@@ -515,18 +519,30 @@ export function buildMcpServer(deps: Deps): McpServer {
     "authorize_salesforce",
     {
       title: "Authorize Salesforce (OAuth consent)",
-      description: "Ask the user to complete a Salesforce OAuth consent via URL-mode elicitation.",
+      description: "Ask the user to complete a Salesforce OAuth consent via URL-mode elicitation. Builds a real authorize URL (client_id + redirect_uri from config); scope is restricted to a least-privilege allowlist.",
       inputSchema: { scope: z.string().default("api refresh_token") },
       outputSchema: { action: z.string() },
       annotations: { openWorldHint: true },
     },
     async ({ scope }) => {
+      // Least-privilege: only allow known, narrow scopes — reject escalations like "full"/"web".
+      const requested = scope.split(/\s+/).filter(Boolean);
+      const disallowed = requested.filter((s) => !ALLOWED_SF_SCOPES.has(s));
+      if (requested.length === 0 || disallowed.length > 0) {
+        return errResult(`Disallowed Salesforce scope(s): ${disallowed.join(", ") || "(empty)"}. Allowed: ${[...ALLOWED_SF_SCOPES].join(", ")}.`);
+      }
+      let url: string;
+      try {
+        url = deps.salesforce.authorizeUrl(requested.join(" "));
+      } catch (e) {
+        return errResult(e instanceof Error ? e.message : "Salesforce OAuth is not configured.");
+      }
       try {
         const res = await server.server.elicitInput({
           mode: "url",
           elicitationId: crypto.randomUUID(),
           message: "Approve Salesforce access so Conduit can sync on your behalf.",
-          url: `https://login.salesforce.com/services/oauth2/authorize?response_type=code&scope=${encodeURIComponent(scope)}`,
+          url,
         });
         return ok({ action: res.action });
       } catch {

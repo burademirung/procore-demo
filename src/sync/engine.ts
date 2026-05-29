@@ -267,8 +267,26 @@ export class SyncEngine {
       return { status: "ignored", detail: `reverse update requires ${mapping.sfExternalIdField}` };
     }
     const rid = procoreId as string | number;
+
+    // Skip a no-op reverse write (e.g. the CDC echo of our own forward sync) and keep the link hash
+    // current, so the forward webhook that follows this write doesn't bounce the same value back.
+    const sfBag: Record<string, unknown> = {};
+    for (const f of mapping.fields) {
+      if (Object.prototype.hasOwnProperty.call(event.fields, f.salesforce)) sfBag[f.salesforce] = readField(event.fields, f.salesforce);
+    }
+    const digest = hashFields(sfBag);
+    const link = this.opts.links ? await this.opts.links.get(mapping.key, String(rid)) : undefined;
+    if (link?.lastHash === digest) return { status: "skipped_unchanged", detail: String(rid) };
+
     if (projectScoped) await this.procore.updateProjectResource(segment, pid, rid, procoreFields);
     else await this.procore.update(segment, rid, procoreFields);
+    if (this.opts.links) {
+      await this.opts.links.set(mapping.key, {
+        procoreId: String(rid),
+        ...(link?.salesforceId ? { salesforceId: link.salesforceId } : {}),
+        lastHash: digest,
+      });
+    }
     this.notify("procore", mapping.procoreResource, String(rid), "upsert");
     return { status: "synced", detail: `${mapping.salesforceObject}→${segment}#${rid}` };
   }

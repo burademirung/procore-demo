@@ -378,6 +378,23 @@ describe("SyncEngine.handleSalesforceChange (reverse: SF → Procore)", () => {
     expect(mock.calls).toHaveLength(0); // never hard-deletes the Procore record
   });
 
+  it("reverse UPDATE updates the link hash and skips an identical echo (no redundant PATCH)", async () => {
+    const { procore, salesforce, dedup } = await buildTestStack();
+    const links = new InMemoryLinkStore();
+    const engine = new SyncEngine(procore, salesforce, dedup, { links });
+    mock = installFetchMock([{ match: "/rest/v1.0/projects/7/contract_documents/55", responses: { json: { id: 55 } } }]);
+    const ev = (id: string) => ({
+      id,
+      sobject: "Procore_Contract_Document__c",
+      changeType: "UPDATE" as const,
+      fields: { Procore_Id__c: 55, Procore_Project_Id__c: 7, Status__c: "Executed" },
+    });
+    expect((await engine.handleSalesforceChange(ev("rev-1"))).status).toBe("synced");
+    // Same data, fresh event id (not a dedup hit) → recognized as a no-op echo via the link hash.
+    expect((await engine.handleSalesforceChange(ev("rev-2"))).status).toBe("skipped_unchanged");
+    expect(mock.callsFor("/contract_documents/55")).toHaveLength(1); // only the first write happened
+  });
+
   it("reverse legal change without the Procore project id is ignored (project-scoped guard)", async () => {
     const { sync } = await buildTestStack();
     mock = installFetchMock([{ match: "__never__", responses: { json: {} } }]);
