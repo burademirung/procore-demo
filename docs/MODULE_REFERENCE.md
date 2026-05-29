@@ -54,6 +54,9 @@ Rate-limit-aware fetch.
   - `createWebhookHook({ deliveryUrl, companyId?, projectId?, apiVersion? }): Promise<{id:number}>`
     — step 1 of the two-tier model (endpoint + scope).
   - `addWebhookTrigger(hookId, trigger): Promise<unknown>` — step 2 (resource + event type).
+  - **(0.6.0, write-back)** `create(segment, body)`, `update(segment, id, body)`, `delete(segment, id)` (top-level)
+    and `createProjectResource` / `updateProjectResource` / `deleteProjectResource` (`/projects/{id}/{segment}`).
+    DELETE uses `fetchWithRetry` (no JSON parse). *(Write endpoints/verbs: `[NEEDS LIVE VERIFICATION]`.)*
   - API paths are centralized in a private `PATHS` constant. *(Contracts: `[NEEDS LIVE VERIFICATION]`.)*
 
 ---
@@ -147,7 +150,9 @@ Boots `loadConfig(process.env)`, in-memory stores, clients, engine, and an HTTP 
 
 ## `src/sync/engine.ts` — added in 0.2.0
 - **`SyncEngineOptions`** `{ audit?, links?, onSynced? }`; constructor accepts them; **`setNotifier(fn)`**.
-- **`handleSalesforceChange(event)`** — reverse (SF CDC → Procore), CREATE-only.
+- **`handleSalesforceChange(event)`** — reverse (SF CDC → Procore). **(0.6.0)** full CREATE/UPDATE/DELETE:
+  recovers the Procore record id from `sfExternalIdField` and project from `projectIdField`, then writes
+  via the Procore client (project-scoped or top-level). LWW by event order; dedup drops replays.
 - **`syncLegalDocuments(projectId, signal?)`** ★ (0.4.0) — featured: bulk-upserts the legal-document
   vertical (`LEGAL_MAPPING_KEYS`) into Salesforce. **`syncFinancials(projectId, signal?)`**,
   **`createCaseFromRfi(projectId, rfiId)`**. Both `sync*` methods delegate to the private

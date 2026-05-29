@@ -174,6 +174,48 @@ export class ProcoreClient {
     });
   }
 
+  // ── Write-back (Salesforce → Procore). [NEEDS LIVE VERIFICATION] write endpoints/verbs ────────
+  /** Update a top-level record by id (PATCH). */
+  async update(segment: string, id: string | number, body: Record<string, unknown>): Promise<{ id: number }> {
+    return fetchJson(this.url(`/rest/v1.0/${enc(segment)}/${enc(id)}`), {
+      method: "PATCH",
+      headers: { ...(await this.authHeaders()), "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** Delete a top-level record by id. (DELETE returns 204/no body, so don't JSON-parse.) */
+  async delete(segment: string, id: string | number): Promise<void> {
+    const url = this.url(`/rest/v1.0/${enc(segment)}/${enc(id)}`);
+    const res = await fetchWithRetry(url, { method: "DELETE", headers: await this.authHeaders() });
+    if (!res.ok) throw new HttpError(res.status, await res.text(), url);
+  }
+
+  /** Create a project-scoped record (e.g. a legal document under a project). */
+  async createProjectResource(segment: string, projectId: string | number, body: Record<string, unknown>): Promise<{ id: number }> {
+    return fetchJson(this.url(`/rest/v1.0/projects/${enc(projectId)}/${enc(segment)}`), {
+      method: "POST",
+      headers: { ...(await this.authHeaders()), "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** Update a project-scoped record by id (PATCH). */
+  async updateProjectResource(segment: string, projectId: string | number, id: string | number, body: Record<string, unknown>): Promise<{ id: number }> {
+    return fetchJson(this.url(`/rest/v1.0/projects/${enc(projectId)}/${enc(segment)}/${enc(id)}`), {
+      method: "PATCH",
+      headers: { ...(await this.authHeaders()), "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** Delete a project-scoped record by id. (DELETE returns 204/no body, so don't JSON-parse.) */
+  async deleteProjectResource(segment: string, projectId: string | number, id: string | number): Promise<void> {
+    const url = this.url(`/rest/v1.0/projects/${enc(projectId)}/${enc(segment)}/${enc(id)}`);
+    const res = await fetchWithRetry(url, { method: "DELETE", headers: await this.authHeaders() });
+    if (!res.ok) throw new HttpError(res.status, await res.text(), url);
+  }
+
   // ── Webhooks (two-tier). [VERIFIED] model ────────────────────────────────────
   /** Step 1: create a hook (endpoint + scope). Scope is company- OR project-level. */
   async createWebhookHook(input: {

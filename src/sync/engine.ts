@@ -195,8 +195,14 @@ export class SyncEngine {
   }
 
   /**
-   * Inbound Salesforce → Procore via Change Data Capture. Mirrors the Procore path: dedup → map →
-   * create/update in Procore. Only mappings with direction bidirectional/sf_to_procore participate.
+   * Inbound Salesforce → Procore via Change Data Capture. dedup → map → CREATE/UPDATE/DELETE in
+   * Procore. Only mappings with direction bidirectional/sf_to_procore participate.
+   *
+   * Reverse identity: the Procore record id is carried on the SF record's External Id field
+   * (`sfExternalIdField`); project-scoped resources also carry the Procore project id in
+   * `projectIdField`. CREATE has no Procore id yet; UPDATE/DELETE require it (else we'd act on the
+   * wrong record). Conflicts resolve last-write-wins by event order; dedup drops replays.
+   * [NEEDS LIVE VERIFICATION] the Procore write endpoints/verbs (see ProcoreClient write methods).
    */
   async handleSalesforceChange(event: SalesforceChangeEvent): Promise<SyncResult> {
     const isNew = await this.dedup.markIfNew(event.id);
@@ -205,17 +211,45 @@ export class SyncEngine {
     const mapping = mappingForSalesforceObject(event.sobject);
     if (!mapping) return { status: "no_mapping", detail: event.sobject };
     if (mapping.direction === "procore_to_sf") return { status: "ignored", detail: "wrong direction" };
-    // Reverse UPDATE/DELETE need a Procore-side record lookup (link index) — Phase 4. CREATE only,
-    // so we never duplicate a Procore record on an UPDATE event.
-    if (event.changeType !== "CREATE") {
-      return { status: "ignored", detail: `reverse ${event.changeType.toLowerCase()} not yet implemented (Phase 4)` };
+
+    const segment = segmentFor(mapping.procoreResource);
+    const procoreFields = salesforceToProcore(mapping, event.fields);
+    const projectScoped = PROJECT_SCOPED.has(mapping.procoreResource);
+
+    // Project-scoped reverse writes need the Procore project id, carried on the SF record.
+    const projectId = projectScoped && mapping.projectIdField ? event.fields[mapping.projectIdField] : undefined;
+    if (projectScoped && (projectId === undefined || projectId === null)) {
+      return { status: "ignored", detail: `reverse sync needs ${mapping.projectIdField} (Procore project id)` };
+    }
+    const pid = projectId as string | number;
+
+    if (event.changeType === "CREATE") {
+      const created = projectScoped
+        ? await this.procore.createProjectResource(segment, pid, procoreFields)
+        : await this.procore.create(segment, procoreFields);
+      this.notify("procore", mapping.procoreResource, String(created.id), "create");
+      return { status: "synced", detail: `${mapping.salesforceObject}→${segment}#${created.id}` };
     }
 
-    const procoreFields = salesforceToProcore(mapping, event.fields);
-    const segment = segmentFor(mapping.procoreResource);
-    const created = await this.procore.create(segment, procoreFields);
-    this.notify("procore", mapping.procoreResource, String(created.id), "create");
-    return { status: "synced", detail: `${mapping.salesforceObject}→${segment}#${created.id}` };
+    // UPDATE / DELETE must target an existing Procore record by its id (on the External Id field).
+    const procoreId = event.fields[mapping.sfExternalIdField];
+    if (procoreId === undefined || procoreId === null) {
+      return { status: "ignored", detail: `reverse ${event.changeType.toLowerCase()} requires ${mapping.sfExternalIdField}` };
+    }
+    const rid = procoreId as string | number;
+
+    if (event.changeType === "UPDATE") {
+      if (projectScoped) await this.procore.updateProjectResource(segment, pid, rid, procoreFields);
+      else await this.procore.update(segment, rid, procoreFields);
+      this.notify("procore", mapping.procoreResource, String(rid), "upsert");
+      return { status: "synced", detail: `${mapping.salesforceObject}→${segment}#${rid}` };
+    }
+
+    // DELETE
+    if (projectScoped) await this.procore.deleteProjectResource(segment, pid, rid);
+    else await this.procore.delete(segment, rid);
+    this.notify("procore", mapping.procoreResource, String(rid), "soft_delete");
+    return { status: "deleted", detail: `${mapping.salesforceObject}→${segment}#${rid}` };
   }
 
   /**
@@ -286,7 +320,12 @@ export class SyncEngine {
       const records = (await this.procore.listProjectResource(segmentFor(m.procoreResource), projectId)) as Array<Record<string, unknown>>;
       const rows = records
         .filter((r) => r.id !== undefined)
-        .map((r) => ({ __externalId: String(r.id), ...procoreToSalesforce(m, r) }));
+        .map((r) => {
+          const sf = procoreToSalesforce(m, r);
+          // Stamp the project id so the SF record round-trips for bidirectional reverse sync.
+          if (m.projectIdField) sf[m.projectIdField] = String(projectId);
+          return { __externalId: String(r.id), ...sf };
+        });
       if (rows.length) await this.salesforce.bulkUpsert(m.salesforceObject, m.sfExternalIdField, rows);
       byObject[m.salesforceObject] = rows.length;
       synced += rows.length;

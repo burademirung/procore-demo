@@ -417,7 +417,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
       <a class="btn btn-ghost" href="#use">How to use it</a>
     </div>
     <div class="stats">
-      <div class="stat"><div class="n">153<span class="u"> tests</span></div><div class="l">99% line coverage</div></div>
+      <div class="stat"><div class="n">162<span class="u"> tests</span></div><div class="l">99% line coverage</div></div>
       <div class="stat"><div class="n">&lt;5<span class="u">s</span></div><div class="l">webhook ACK</div></div>
       <div class="stat"><div class="n">OAuth 2.1</div><div class="l">PKCE · S256</div></div>
       <div class="stat"><div class="n">2<span class="u"> systems</span></div><div class="l">1 protocol</div></div>
@@ -447,7 +447,8 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
     </div>
     <div class="scenarios" id="scenarios">
       <div class="scn-group-label">Legal documents — the headline capability</div>
-      <button class="scn featured" data-dir="pc" data-scn="legaldocs"><span class="ic">⚖</span> Sync legal documents → Salesforce</button>
+      <button class="scn featured" data-dir="pc" data-scn="legaldocs"><span class="ic">⚖</span> Sync legal documents Procore → Salesforce</button>
+      <button class="scn" data-dir="sf" data-scn="legalreverse"><span class="ic">⇄</span> Legal edit in Salesforce → Procore <span class="feat">bidirectional</span></button>
       <button class="scn" data-dir="sf" data-scn="uploadcontract"><span class="ic">§</span> Upload signed contract file → Salesforce <span class="feat">ContentVersion</span></button>
 
       <div class="scn-group-label">Core sync &amp; live checks</div>
@@ -561,7 +562,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
     </div>
     <div class="card">
       <div class="ico o">✓</div><h3>Verifiably correct</h3>
-      <p>153 unit + integration tests at ~99% line coverage, including a real MCP client driving the server end-to-end and a webhook replay-storm test. The build is green before it ships.</p>
+      <p>162 unit + integration tests at ~99% line coverage, including a real MCP client driving the server end-to-end and a webhook replay-storm test. The build is green before it ships.</p>
       <div class="tagrow"><span class="mintag">Vitest</span><span class="mintag">85% gate</span><span class="mintag">CI-ready</span></div>
     </div>
   </div>
@@ -572,7 +573,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
   <div class="sec-head reveal">
     <span class="eyebrow">// the canonical map</span>
     <h2>Every object, mapped both ways.</h2>
-    <p><b>Legal documents lead the model</b> — contracts, insurance certificates, lien waivers and compliance records flow Procore→Salesforce so legal &amp; CRM teams have a live record of every agreement. Master data syncs bidirectionally; financials and PM records flow into the CRM for reporting. Each mapping is anchored by a Salesforce External ID for idempotent upserts.</p>
+    <p><b>Legal documents lead the model</b> — contracts, insurance certificates, lien waivers and compliance records sync <b>bidirectionally</b>: Procore is the document system of record, while legal/CRM edits in Salesforce (status, approval outcomes) flow back to Procore. Master data also syncs both ways; financials and PM records flow into the CRM for reporting. Each mapping is anchored by a Salesforce External ID for idempotent upserts.</p>
   </div>
   <div class="tablewrap reveal">
     <table>
@@ -581,11 +582,11 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
         <tr><td class="pc-c">Company / Vendor</td><td><span class="dirpill bi">⇄ bi</span></td><td class="sf-c">Account</td><td><span class="mono">Procore_Company_Id__c</span></td></tr>
         <tr><td class="pc-c">Project</td><td><span class="dirpill bi">⇄ bi</span></td><td class="sf-c">Procore_Project__c</td><td><span class="mono">Procore_Project_Id__c</span></td></tr>
         <tr><td class="pc-c">Directory Contact / User</td><td><span class="dirpill bi">⇄ bi</span></td><td class="sf-c">Contact</td><td><span class="mono">Procore_Contact_Id__c</span></td></tr>
-        <tr><td colspan="4" style="background:linear-gradient(90deg,rgba(239,90,35,.07),transparent);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--procore);font-weight:600">★ Legal documents — featured</td></tr>
-        <tr><td class="pc-c">Contract Document</td><td><span class="dirpill to">→ to SF</span></td><td class="sf-c">Procore_Contract_Document__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
-        <tr><td class="pc-c">Insurance Certificate</td><td><span class="dirpill to">→ to SF</span></td><td class="sf-c">Procore_Insurance_Certificate__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
-        <tr><td class="pc-c">Lien Waiver</td><td><span class="dirpill to">→ to SF</span></td><td class="sf-c">Procore_Lien_Waiver__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
-        <tr><td class="pc-c">Compliance Document</td><td><span class="dirpill to">→ to SF</span></td><td class="sf-c">Procore_Compliance_Document__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
+        <tr><td colspan="4" style="background:linear-gradient(90deg,rgba(239,90,35,.07),transparent);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--procore);font-weight:600">★ Legal documents — featured · bidirectional</td></tr>
+        <tr><td class="pc-c">Contract Document</td><td><span class="dirpill bi">⇄ bi</span></td><td class="sf-c">Procore_Contract_Document__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
+        <tr><td class="pc-c">Insurance Certificate</td><td><span class="dirpill bi">⇄ bi</span></td><td class="sf-c">Procore_Insurance_Certificate__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
+        <tr><td class="pc-c">Lien Waiver</td><td><span class="dirpill bi">⇄ bi</span></td><td class="sf-c">Procore_Lien_Waiver__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
+        <tr><td class="pc-c">Compliance Document</td><td><span class="dirpill bi">⇄ bi</span></td><td class="sf-c">Procore_Compliance_Document__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
         <tr><td colspan="4" style="font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);font-weight:600">Financial documents</td></tr>
         <tr><td class="pc-c">Prime Contract</td><td><span class="dirpill to">→ to SF</span></td><td class="sf-c">Procore_Prime_Contract__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
         <tr><td class="pc-c">Commitment / Change Order</td><td><span class="dirpill to">→ to SF</span></td><td class="sf-c">Procore_Commitment__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
@@ -860,7 +861,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
 <span class="k">$</span> npm run worker:dev   <span class="c"># Workers (wrangler)</span>
 
 <span class="k">$</span> npm run typecheck    <span class="c"># node + worker targets</span>
-<span class="k">$</span> npm test             <span class="c"># 153 tests</span>
+<span class="k">$</span> npm test             <span class="c"># 162 tests</span>
 <span class="k">$</span> npm run test:coverage <span class="c"># enforced gates</span>
       </div>
     </div>
@@ -897,7 +898,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
         <li><b>Deep research</b> — <span class="mono">24 verified claims</span>, primary sources</li>
         <li><b>Spec</b> — architecture, mapping, auth, roadmap (<span class="mono">SPEC.md</span>)</li>
         <li><b>Phase 0 build</b> — clients, mapping, sync engine, MCP surface</li>
-        <li><b>Tests</b> — <span class="mono">153 passing · ~99% lines</span></li>
+        <li><b>Tests</b> — <span class="mono">162 passing · ~99% lines</span></li>
         <li><b>Deploy</b> — Cloudflare Workers + this GUI, verified live</li>
       </ul>
     </div>
@@ -969,7 +970,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
     <div class="card">
       <div class="ico o">✓</div><h3>Quality &amp; testing</h3>
       <ul class="techlist">
-        <li><b>Vitest</b> + <span class="mono">@vitest/coverage-v8</span> — 153 tests</li>
+        <li><b>Vitest</b> + <span class="mono">@vitest/coverage-v8</span> — 162 tests</li>
         <li><b>ESLint</b> + <b>typescript-eslint</b> — linting</li>
         <li><b>eslint-plugin-security</b> + <b>Semgrep</b> — SAST</li>
         <li><b>npm audit</b> — SCA (0 vulns)</li>
@@ -1033,7 +1034,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
       <ul class="techlist">
         <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/DEPLOYMENT.md" target="_blank" rel="noopener"><span class="docfile">DEPLOYMENT.md</span></a> — Cloudflare deploy: Workers, Durable Objects, KV, Cron, secrets, verify & rollback</li>
         <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/SECURITY.md" target="_blank" rel="noopener"><span class="docfile">SECURITY.md</span></a> — threat model, SAST/SCA/lint posture, secrets, best practices</li>
-        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/TESTING.md" target="_blank" rel="noopener"><span class="docfile">TESTING.md</span></a> — test strategy, the 153-test suite, coverage gates, helpers</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/TESTING.md" target="_blank" rel="noopener"><span class="docfile">TESTING.md</span></a> — test strategy, the 162-test suite, coverage gates, helpers</li>
       </ul>
     </div>
     <div class="card srccard">
@@ -1121,7 +1122,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
   <div class="brand" style="font-size:16px"><span class="mk"></span>Conduit</div>
   <div>Created by Vladimir Kamenev · demonstration build · Procore ⇄ Salesforce · MCP · © 2026</div>
 </div>
-<div class="wrap"><p class="disclaimer">Demonstration build. Health &amp; OAuth-discovery scenarios call the live deployed Worker; the advanced scenarios animate <b>real, tested MCP tools</b> (sampling, elicitation, completion, resource templates, structured output, reverse sync, Bulk API jobs) — 153 passing tests, ~99% line coverage. Live Procore/Salesforce credential exchange and Salesforce CDC are Phase 1/4. API field names tagged for verification against current Procore &amp; Salesforce docs.</p></div>
+<div class="wrap"><p class="disclaimer">Demonstration build. Health &amp; OAuth-discovery scenarios call the live deployed Worker; the advanced scenarios animate <b>real, tested MCP tools</b> (sampling, elicitation, completion, resource templates, structured output, reverse sync, Bulk API jobs) — 162 passing tests, ~99% line coverage. Live Procore/Salesforce credential exchange and Salesforce CDC are Phase 1/4. API field names tagged for verification against current Procore &amp; Salesforce docs.</p></div>
 </footer>
 
 <!-- CONTACT MODAL -->
@@ -1394,6 +1395,20 @@ const scenarios = {
       {t:"Structured result returned",d:"validated output schema",logs:[
         '<span class="ok">↳ { synced: 7, byObject: { Procore_Contract_Document__c: 1, … } } — typed &amp; schema-validated</span>']},
     ],'<span class="k">RESULT</span><br><b>Legal documents synced ✓</b> Every contract, certificate, waiver &amp; compliance record → Salesforce, queryable by your legal &amp; CRM teams — with validated structured tool output.');
+  },
+  async legalreverse(){
+    raw('<span class="hl">▸ MCP tool:</span> <span class="mono">sync_salesforce_to_procore</span> <span class="m">— reverse path (Salesforce CDC → Procore write-back)</span>');
+    flow.querySelector('[data-fn="sf"]').classList.add("lit","sf");
+    await runStepped([
+      {t:"Legal change in Salesforce",d:"CDC event",flow:"map",logs:[
+        '<span class="sf">↳ Procore_Contract_Document__c #C-2271 → Status__c: "Approved" (legal sign-off)</span>']},
+      {t:"Recover Procore identity",d:"External Id + project id",logs:[
+        '<span class="m">↳ Procore_Id__c = 55 · Procore_Project_Id__c = 7 → target /projects/7/contract_documents/55</span>']},
+      {t:"Write back to Procore",d:"PATCH the record",flow:"pc",flowCls:"pc",logs:[
+        '<span class="pc">↳ PATCH → status "Approved" mirrored onto the Procore document, visible to the field team</span>']},
+      {t:"Idempotent + dedup",d:"replays dropped",logs:[
+        '<span class="ok">↳ { status: "synced" } — last-write-wins by event order; replays deduped</span>']},
+    ],'<span class="k">RESULT</span><br><b>Salesforce → Procore ✓</b> Legal/CRM edits flow back to Procore — the legal document is now truly <b>bidirectional</b>. <span class="m">(Procore write endpoints tagged for live verification.)</span>');
   },
   async uploadcontract(){
     raw('<span class="hl">▸ MCP tool:</span> <span class="mono">upload_contract_file</span> <span class="m">→ Salesforce ContentVersion (REST multipart, up to 2 GB)</span>');

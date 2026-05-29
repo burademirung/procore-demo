@@ -16,8 +16,11 @@ interface ObjectMapping {
 
 ## Direction rationale
 - **Legal documents** (contracts, insurance certificates, lien waivers, compliance records) →
-  **Procore → Salesforce** — the **featured vertical**, giving legal & CRM teams a live, queryable
-  mirror of every executed agreement and its status. Synced by `sync_project_legal_documents`.
+  **bidirectional** (the **featured vertical**). Procore is the document system of record, so the
+  forward push (`sync_project_legal_documents`) gives legal/CRM teams a live mirror; the reverse path
+  (`sync_salesforce_to_procore` / CDC) writes Salesforce edits — status, approval/review outcomes —
+  back onto the Procore record. The SF record carries `Procore_Id__c` (record) and
+  `Procore_Project_Id__c` (project) so the reverse write targets the right Procore document.
 - **Master data** (companies, projects, contacts) → **bidirectional**.
 - **Financials & project-management records** (contracts, change orders, RFIs, submittals) →
   **Procore → Salesforce** (Salesforce is rarely the source of truth for construction financials).
@@ -28,10 +31,10 @@ interface ObjectMapping {
 | `company` | `Companies` | ⇄ bidirectional | `Account` | `Procore_Company_Id__c` |
 | `project` | `Projects` | ⇄ bidirectional | `Procore_Project__c` | `Procore_Project_Id__c` |
 | `contact` | `Users` | ⇄ bidirectional | `Contact` | `Procore_Contact_Id__c` |
-| **`contract_document`** ★ | `ContractDocuments` | → to SF | `Procore_Contract_Document__c` | `Procore_Id__c` |
-| **`insurance_certificate`** ★ | `InsuranceCertificates` | → to SF | `Procore_Insurance_Certificate__c` | `Procore_Id__c` |
-| **`lien_waiver`** ★ | `LienWaivers` | → to SF | `Procore_Lien_Waiver__c` | `Procore_Id__c` |
-| **`compliance_document`** ★ | `ComplianceDocuments` | → to SF | `Procore_Compliance_Document__c` | `Procore_Id__c` |
+| **`contract_document`** ★ | `ContractDocuments` | ⇄ bidirectional | `Procore_Contract_Document__c` | `Procore_Id__c` |
+| **`insurance_certificate`** ★ | `InsuranceCertificates` | ⇄ bidirectional | `Procore_Insurance_Certificate__c` | `Procore_Id__c` |
+| **`lien_waiver`** ★ | `LienWaivers` | ⇄ bidirectional | `Procore_Lien_Waiver__c` | `Procore_Id__c` |
+| **`compliance_document`** ★ | `ComplianceDocuments` | ⇄ bidirectional | `Procore_Compliance_Document__c` | `Procore_Id__c` |
 | `prime_contract` | `PrimeContracts` | → to SF | `Procore_Prime_Contract__c` | `Procore_Id__c` |
 | `rfi` | `RfiS` | → to SF | `Procore_RFI__c` | `Procore_Id__c` |
 

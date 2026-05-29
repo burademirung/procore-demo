@@ -278,12 +278,14 @@ describe("SyncEngine.handleSalesforceChange (reverse: SF → Procore)", () => {
     expect(r.status).toBe("ignored");
   });
 
-  it("does NOT duplicate a Procore record on a reverse UPDATE (only CREATE creates)", async () => {
+  it("ignores a reverse UPDATE when the Procore id (External Id field) is absent", async () => {
     const { sync } = await buildTestStack();
     mock = installFetchMock([{ match: "/rest/v1.0/projects", responses: { json: { id: 1 } } }]);
+    // No Procore_Project_Id__c on the record → we can't target a Procore record, so don't write.
     const r = await sync.handleSalesforceChange({ id: "u1", sobject: "Procore_Project__c", changeType: "UPDATE", fields: { Name: "X" } });
     expect(r.status).toBe("ignored");
-    expect(mock.calls).toHaveLength(0); // no Procore create call was made
+    expect(r.detail).toContain("Procore_Project_Id__c");
+    expect(mock.calls).toHaveLength(0); // never wrote to Procore
   });
 
   it("deduplicates a replay of the SAME real sobject event (not just any prior id)", async () => {
@@ -295,7 +297,7 @@ describe("SyncEngine.handleSalesforceChange (reverse: SF → Procore)", () => {
     expect(mock.calls).toHaveLength(1); // exactly one Procore create
   });
 
-  it("ignores a reverse DELETE on a bidirectional object (Phase 4 not yet implemented)", async () => {
+  it("ignores a reverse DELETE when the Procore id is absent (no target record)", async () => {
     const { sync } = await buildTestStack();
     mock = installFetchMock([{ match: "__never__", responses: { json: {} } }]);
     const r = await sync.handleSalesforceChange({ id: "del-1", sobject: "Procore_Project__c", changeType: "DELETE", fields: {} });
@@ -310,6 +312,68 @@ describe("SyncEngine.handleSalesforceChange (reverse: SF → Procore)", () => {
     mock = installFetchMock([{ match: "/rest/v1.0/projects", responses: { json: { id: 9001 } } }]);
     await engine.handleSalesforceChange({ id: "sf-audit", sobject: "Procore_Project__c", changeType: "CREATE", fields: { Name: "T" } });
     expect(audit.entries()[0]).toMatchObject({ action: "create", system: "procore", externalId: "9001", at: expect.any(Number) });
+  });
+
+  // ── Bidirectional legal documents (0.6.0): SF → Procore CREATE / UPDATE / DELETE ──────────────
+  it("reverse CREATE: creates a project-scoped legal document in Procore", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([{ match: "/rest/v1.0/projects/7/contract_documents", responses: { json: { id: 555 } } }]);
+    const r = await sync.handleSalesforceChange({
+      id: "leg-c1",
+      sobject: "Procore_Contract_Document__c",
+      changeType: "CREATE",
+      fields: { Name: "Master Agreement", Status__c: "Draft", Procore_Project_Id__c: 7 },
+    });
+    expect(r.status).toBe("synced");
+    expect(r.detail).toContain("contract_documents#555");
+    const call = mock.calls[0]!;
+    expect(call.method).toBe("POST");
+    expect(call.url).toContain("/rest/v1.0/projects/7/contract_documents");
+    expect(JSON.parse(call.body!)).toMatchObject({ title: "Master Agreement", status: "Draft" });
+  });
+
+  it("reverse UPDATE: PATCHes the existing Procore legal record by id", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([{ match: "/rest/v1.0/projects/7/contract_documents/55", responses: { json: { id: 55 } } }]);
+    const r = await sync.handleSalesforceChange({
+      id: "leg-u1",
+      sobject: "Procore_Contract_Document__c",
+      changeType: "UPDATE",
+      fields: { Procore_Id__c: 55, Procore_Project_Id__c: 7, Status__c: "Executed" },
+    });
+    expect(r.status).toBe("synced");
+    const call = mock.calls[0]!;
+    expect(call.method).toBe("PATCH");
+    expect(call.url).toContain("/projects/7/contract_documents/55");
+    expect(JSON.parse(call.body!)).toMatchObject({ status: "Executed" });
+  });
+
+  it("reverse DELETE: deletes the Procore legal record by id", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([{ match: "/rest/v1.0/projects/7/lien_waivers/88", responses: { text: "" } }]);
+    const r = await sync.handleSalesforceChange({
+      id: "leg-d1",
+      sobject: "Procore_Lien_Waiver__c",
+      changeType: "DELETE",
+      fields: { Procore_Id__c: 88, Procore_Project_Id__c: 7 },
+    });
+    expect(r.status).toBe("deleted");
+    expect(mock.calls[0]!.method).toBe("DELETE");
+    expect(mock.calls[0]!.url).toContain("/projects/7/lien_waivers/88");
+  });
+
+  it("reverse legal change without the Procore project id is ignored (project-scoped guard)", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([{ match: "__never__", responses: { json: {} } }]);
+    const r = await sync.handleSalesforceChange({
+      id: "leg-np",
+      sobject: "Procore_Compliance_Document__c",
+      changeType: "CREATE",
+      fields: { Name: "Permit" }, // missing Procore_Project_Id__c
+    });
+    expect(r.status).toBe("ignored");
+    expect(r.detail).toContain("Procore_Project_Id__c");
+    expect(mock.calls).toHaveLength(0);
   });
 });
 

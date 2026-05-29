@@ -5,10 +5,11 @@ exchange**: it syncs a project's **contracts, insurance certificates, lien waive
 records** from [Procore](https://www.procore.com/) into Salesforce (via `sync_project_legal_documents`),
 and also brokers **bidirectional** sync of projects, financials and contacts between the two systems.
 It exposes agent-callable **tools / resources / prompts** and runs a durable background
-**reconciliation engine** for webhook-driven sync. Beyond syncing legal-document *metadata*, it also
-works with documents **inside Salesforce** — uploading signed files to Contracts (`upload_contract_file`
-→ ContentVersion), querying Contracts, routing records for approval, and checking e-signature status —
-all on the standard `api` OAuth scope.
+**reconciliation engine** for webhook-driven sync. Legal documents sync **bidirectionally** —
+Procore is the system of record, and legal/CRM edits in Salesforce (status, approval outcomes) flow
+back to Procore. Beyond metadata, it also works with documents **inside Salesforce** — uploading
+signed files to Contracts (`upload_contract_file` → ContentVersion), querying Contracts, routing
+records for approval, and checking e-signature status — all on the standard `api` OAuth scope.
 
 > Architecture, data mapping, auth design, and the phased roadmap live in **[SPEC.md](./SPEC.md)**.
 > Claims in the spec are tagged `[VERIFIED]` (primary-sourced research) or
@@ -50,7 +51,7 @@ Procore webhooks ──▶ /webhooks/procore ──▶ dedup ──▶ sync engi
 ```bash
 npm install --legacy-peer-deps
 npm run typecheck        # node + worker targets
-npm test                 # 153 tests
+npm test                 # 162 tests
 npm run test:coverage    # enforces 95/95/85/95 thresholds (lines/functions/branches/statements)
 npm run dev              # local Node server on :8788
 ```

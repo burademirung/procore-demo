@@ -29,6 +29,12 @@ export interface ObjectMapping {
   sfExternalIdField: string;
   direction: SyncDirection;
   fields: FieldMap[];
+  /**
+   * For PROJECT-SCOPED bidirectional resources only: the Salesforce field that carries the
+   * Procore project id. The reverse path (SF → Procore) reads it to know which project to
+   * write under, and the forward path injects it so the SF record round-trips. e.g. "Procore_Project_Id__c".
+   */
+  projectIdField?: string;
 }
 
 export const MAPPINGS: ObjectMapping[] = [
@@ -87,17 +93,23 @@ export const MAPPINGS: ObjectMapping[] = [
   // these endpoints will 404 against a live Procore tenant until the exact resource paths and
   // fields are confirmed against the Procore API, and the matching Salesforce custom objects
   // (Procore_*__c with a Procore_Id__c External Id) are created in the target org.
+  // Legal docs sync BIDIRECTIONALLY (0.6.0): Procore is the document system of record, but
+  // legal/CRM edits in Salesforce (status, review/approval outcomes) flow back to Procore. The
+  // reverse path recovers the Procore record id from `sfExternalIdField` and the project from
+  // `projectIdField`. Conflicts resolve last-write-wins by event order (see src/sync/conflict.ts).
   {
     key: "contract_document",
     procoreResource: "ContractDocuments",
     salesforceObject: "Procore_Contract_Document__c",
     sfExternalIdField: "Procore_Id__c",
-    direction: "procore_to_sf",
+    projectIdField: "Procore_Project_Id__c",
+    direction: "bidirectional",
     fields: [
       { procore: "title", salesforce: "Name" },
       { procore: "status", salesforce: "Status__c" },
       { procore: "contract_type", salesforce: "Type__c" },
       { procore: "executed_date", salesforce: "Executed_Date__c" },
+      { procore: "project_id", salesforce: "Procore_Project_Id__c" },
     ],
   },
   {
@@ -105,11 +117,13 @@ export const MAPPINGS: ObjectMapping[] = [
     procoreResource: "InsuranceCertificates",
     salesforceObject: "Procore_Insurance_Certificate__c",
     sfExternalIdField: "Procore_Id__c",
-    direction: "procore_to_sf",
+    projectIdField: "Procore_Project_Id__c",
+    direction: "bidirectional",
     fields: [
       { procore: "certificate_number", salesforce: "Name" },
       { procore: "status", salesforce: "Status__c" },
       { procore: "expiration_date", salesforce: "Expiration_Date__c" },
+      { procore: "project_id", salesforce: "Procore_Project_Id__c" },
     ],
   },
   {
@@ -117,11 +131,13 @@ export const MAPPINGS: ObjectMapping[] = [
     procoreResource: "LienWaivers",
     salesforceObject: "Procore_Lien_Waiver__c",
     sfExternalIdField: "Procore_Id__c",
-    direction: "procore_to_sf",
+    projectIdField: "Procore_Project_Id__c",
+    direction: "bidirectional",
     fields: [
       { procore: "title", salesforce: "Name" },
       { procore: "status", salesforce: "Status__c" },
       { procore: "amount", salesforce: "Amount__c" },
+      { procore: "project_id", salesforce: "Procore_Project_Id__c" },
     ],
   },
   {
@@ -129,11 +145,13 @@ export const MAPPINGS: ObjectMapping[] = [
     procoreResource: "ComplianceDocuments",
     salesforceObject: "Procore_Compliance_Document__c",
     sfExternalIdField: "Procore_Id__c",
-    direction: "procore_to_sf",
+    projectIdField: "Procore_Project_Id__c",
+    direction: "bidirectional",
     fields: [
       { procore: "title", salesforce: "Name" },
       { procore: "status", salesforce: "Status__c" },
       { procore: "due_date", salesforce: "Due_Date__c" },
+      { procore: "project_id", salesforce: "Procore_Project_Id__c" },
     ],
   },
   // ── FINANCIAL DOCUMENTS ──────────────────────────────────────────────────────

@@ -3,6 +3,29 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [0.6.0] — 2026-05-28 — Bidirectional legal documents (Salesforce → Procore)
+
+Legal documents now sync **both ways**. Procore stays the document system of record; legal/CRM
+edits in Salesforce (status, approval/review outcomes) flow back to Procore.
+
+### Added / Changed
+- **Legal mappings → `bidirectional`** (were `procore_to_sf`), each with a `projectIdField`
+  (`Procore_Project_Id__c`) + a `project_id ↔ Procore_Project_Id__c` field map. Forward sync now
+  stamps the project id onto the SF record so it round-trips.
+- **`handleSalesforceChange` now does full CREATE / UPDATE / DELETE** (was CREATE-only). It recovers
+  the Procore record id from `Procore_Id__c` and the project from `Procore_Project_Id__c`, then writes
+  to the project-scoped (or top-level) Procore resource. LWW by event order; dedup drops replays.
+- **New `ProcoreClient` write methods** — `create`/`update`/`delete` (top-level) and
+  `createProjectResource`/`updateProjectResource`/`deleteProjectResource` (`/projects/{id}/{segment}`).
+- **Tests** — reverse CREATE/UPDATE/DELETE for legal docs + project-id guard, and Procore write-method
+  unit tests. Suite grows 153 → **162** passing.
+- **Demo & docs** — a "Legal edit in Salesforce → Procore" demo scenario, mapping table now ⇄ for legal,
+  and updates across DATA_MAPPING/SPEC §4/MODULE_REFERENCE.
+
+> `[NEEDS LIVE VERIFICATION]` the Procore **write** endpoints/verbs (POST/PATCH/DELETE under
+> `/projects/{id}/{resource}`). A production deployment must wire `src/sync/conflict.ts` to the org's
+> real ownership policy — the default is last-write-wins.
+
 ## [0.5.0] — 2026-05-28 — Salesforce-native legal-document operations (Tier 1)
 
 Six new MCP tools that work with legal documents *inside* Salesforce — all on the existing `api`

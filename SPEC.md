@@ -102,10 +102,10 @@ stores the result in the grant `props` — one grant carries **both** Procore an
 | Company (Vendor/Directory) | ⇄ | Account | SF External ID `Procore_Company_Id__c` | Vendors & owners → Accounts |
 | Project | ⇄ | Opportunity *(or custom `Procore_Project__c`)* | `Procore_Project_Id__c` | Won Opp → new Procore project (SF→PC) |
 | Directory Contact / User | ⇄ | Contact | `Procore_Contact_Id__c` + email | Dedup by email to avoid SF duplicates |
-| **★ Contract Document** | → | custom `Procore_Contract_Document__c` | `Procore_Id__c` | **Featured legal vertical** — status/type/executed date |
-| **★ Insurance Certificate** | → | custom `Procore_Insurance_Certificate__c` | `Procore_Id__c` | COI number, status, expiration date |
-| **★ Lien Waiver** | → | custom `Procore_Lien_Waiver__c` | `Procore_Id__c` | Title, status, amount |
-| **★ Compliance Document** | → | custom `Procore_Compliance_Document__c` | `Procore_Id__c` | Title, status, due date |
+| **★ Contract Document** | ⇄ | custom `Procore_Contract_Document__c` | `Procore_Id__c` | **Featured legal vertical (bidirectional)** — status/type/executed date |
+| **★ Insurance Certificate** | ⇄ | custom `Procore_Insurance_Certificate__c` | `Procore_Id__c` | COI number, status, expiration date |
+| **★ Lien Waiver** | ⇄ | custom `Procore_Lien_Waiver__c` | `Procore_Id__c` | Title, status, amount |
+| **★ Compliance Document** | ⇄ | custom `Procore_Compliance_Document__c` | `Procore_Id__c` | Title, status, due date |
 | Prime Contract | → | custom `Procore_Prime_Contract__c` | `Procore_Id__c` | Financials usually PC→SF (reporting) |
 | Commitment / Sub Contract | → | custom `Procore_Commitment__c` | `Procore_Id__c` | |
 | Change Order | → | custom `Procore_Change_Order__c` | `Procore_Id__c` | Line-item granularity = child records |
@@ -131,6 +131,14 @@ is rarely the source of truth for construction documents/financials.
 > and ContentVersion object-reference docs. Companion Tier-1 tools (`get_contract`,
 > `list_contracts_by_status`, `submit_for_approval`, `list_approval_processes`,
 > `check_signature_status`) all run on the existing **`api`** scope.
+>
+> **Bidirectional (0.6.0).** Legal mappings are now `bidirectional`. The reverse path
+> (`sync_salesforce_to_procore` → `handleSalesforceChange`) writes Salesforce edits back to Procore:
+> CREATE/UPDATE/DELETE on the project-scoped Procore resource, recovering the Procore record id from
+> `Procore_Id__c` and the project from `Procore_Project_Id__c` (both carried on the SF record). Conflicts
+> resolve last-write-wins by event order; dedup drops replays. `[NEEDS LIVE VERIFICATION]` the Procore
+> **write** endpoints/verbs (POST/PATCH/DELETE under `/projects/{id}/{resource}`), and a production
+> deployment should wire `src/sync/conflict.ts` to the org's real ownership policy.
 >
 > **Tier 2 (roadmap, requires licensing):** the first-party **Salesforce Contracts** (Revenue Cloud)
 > CLM product — clause libraries, `ContractDocumentVersion`, native e-sign send/void — usable only if

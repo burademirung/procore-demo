@@ -20,13 +20,16 @@ describe("mapping registry lookups", () => {
     expect(mappingForProcoreResource("Nope")).toBeUndefined();
   });
 
-  it("includes every legal-document object (the featured vertical) with a custom SF object", () => {
+  it("includes every legal-document object (the featured vertical) — bidirectional, with project linkage", () => {
     for (const key of LEGAL_MAPPING_KEYS) {
       const m = mappingByKey(key);
       expect(m, `mapping ${key}`).toBeDefined();
-      expect(m!.direction).toBe("procore_to_sf");
+      expect(m!.direction).toBe("bidirectional"); // legal docs sync both ways (0.6.0)
       expect(m!.salesforceObject).toMatch(/__c$/);
       expect(m!.sfExternalIdField).toBe("Procore_Id__c");
+      // project-scoped reverse sync requires the project-id linkage field, present in the field map
+      expect(m!.projectIdField).toBe("Procore_Project_Id__c");
+      expect(m!.fields.some((f) => f.salesforce === "Procore_Project_Id__c")).toBe(true);
     }
     expect(mappingForProcoreResource("ContractDocuments")?.salesforceObject).toBe("Procore_Contract_Document__c");
     expect(mappingForProcoreResource("InsuranceCertificates")?.salesforceObject).toBe("Procore_Insurance_Certificate__c");

@@ -107,6 +107,54 @@ describe("ProcoreClient resources", () => {
   });
 });
 
+describe("ProcoreClient write-back (SF → Procore)", () => {
+  let mock: ReturnType<typeof installFetchMock>;
+  afterEach(() => mock?.restore());
+
+  it("creates a project-scoped record (POST under the project)", async () => {
+    const { client } = await clientWithToken();
+    mock = installFetchMock([{ match: "/rest/v1.0/projects/7/contract_documents", responses: { json: { id: 555 } } }]);
+    const r = await client.createProjectResource("contract_documents", 7, { title: "MA", status: "Draft" });
+    expect(r.id).toBe(555);
+    const call = mock.calls[0]!;
+    expect(call.method).toBe("POST");
+    expect(call.url).toContain("/rest/v1.0/projects/7/contract_documents");
+    expect(JSON.parse(call.body!)).toMatchObject({ title: "MA", status: "Draft" });
+  });
+
+  it("updates a project-scoped record by id (PATCH) with encoded path", async () => {
+    const { client } = await clientWithToken();
+    mock = installFetchMock([{ match: "/rest/v1.0/projects/7/contract_documents/55", responses: { json: { id: 55 } } }]);
+    await client.updateProjectResource("contract_documents", 7, 55, { status: "Executed" });
+    const call = mock.calls[0]!;
+    expect(call.method).toBe("PATCH");
+    expect(call.url).toContain("/rest/v1.0/projects/7/contract_documents/55");
+    expect(JSON.parse(call.body!)).toEqual({ status: "Executed" });
+  });
+
+  it("deletes a project-scoped record without parsing a body", async () => {
+    const { client } = await clientWithToken();
+    mock = installFetchMock([{ match: "/rest/v1.0/projects/7/lien_waivers/88", responses: { text: "" } }]);
+    await client.deleteProjectResource("lien_waivers", 7, 88);
+    expect(mock.calls[0]!.method).toBe("DELETE");
+  });
+
+  it("updates and deletes top-level records", async () => {
+    const { client } = await clientWithToken();
+    mock = installFetchMock([{ match: "/rest/v1.0/projects/42", responses: { json: { id: 42 } } }]);
+    await client.update("projects", 42, { name: "Renamed" });
+    await client.delete("projects", 42);
+    expect(mock.calls[0]!.method).toBe("PATCH");
+    expect(mock.calls[1]!.method).toBe("DELETE");
+  });
+
+  it("throws HttpError when a delete is rejected", async () => {
+    const { client } = await clientWithToken();
+    mock = installFetchMock([{ match: "/rest/v1.0/projects/7/lien_waivers/88", responses: { status: 403, text: "Forbidden" } }]);
+    await expect(client.deleteProjectResource("lien_waivers", 7, 88)).rejects.toBeInstanceOf(HttpError);
+  });
+});
+
 describe("ProcoreClient webhooks (two-tier model)", () => {
   let mock: ReturnType<typeof installFetchMock>;
   afterEach(() => mock?.restore());
