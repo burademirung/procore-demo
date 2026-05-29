@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.wrangler/
+.dev.vars
+coverage/
+.DS_Store
+.tokens/
+.playwright-mcp/
+public/favicon.ico

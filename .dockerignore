@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.github
+coverage
+public
+test
+docs
+*.md
+.env
+.dev.vars
+.wrangler
+.playwright-mcp

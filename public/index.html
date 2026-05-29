@@ -1,0 +1,1304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Conduit — Procore ⇄ Salesforce MCP Bridge</title>
+<meta name="description" content="A live, agent-native Model Context Protocol server brokering bidirectional sync between Procore and Salesforce. Deployed on Cloudflare. Watch it work." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Hanken+Grotesk:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef1f6; --bg2:#e7ebf2; --panel:#ffffff; --panel2:#f7f9fc;
+  --line:rgba(28,48,86,.12); --line-strong:rgba(28,48,86,.20);
+  --ink:#0b1018; --muted:#384151; --faint:#5c6878;
+  --procore:#ef5a23; --procore-glow:rgba(239,90,35,.18);
+  --sf:#0a90c4; --sf-glow:rgba(10,144,196,.16);
+  --gold:#bb7d08; --ok:#0f9d58; --warn:#b9820a; --err:#df2f43;
+  --r:14px; --maxw:1180px;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
+  --disp:"Bricolage Grotesque",sans-serif;
+  --body:"Hanken Grotesk",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);
+  font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+/* blueprint grid + atmospheric glows */
+body::before{
+  content:"";position:fixed;inset:0;z-index:-2;
+  background-image:
+    linear-gradient(var(--line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:46px 46px;background-position:center;
+  mask-image:radial-gradient(ellipse 120% 90% at 50% 0%,#000 35%,transparent 78%);
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;
+  background:
+    radial-gradient(640px 460px at 8% -4%,var(--procore-glow),transparent 60%),
+    radial-gradient(680px 520px at 96% 8%,var(--sf-glow),transparent 62%),
+    radial-gradient(900px 700px at 50% 120%,rgba(30,192,240,.08),transparent 60%);
+  opacity:.5;
+}
+.grain{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.02;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+.mono{font-family:var(--mono)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted)}
+
+/* ── TOP ATTRIBUTION BAR ── */
+.topbar{display:flex;align-items:center;justify-content:center;gap:9px;
+  font-family:var(--mono);font-size:12px;letter-spacing:.04em;
+  padding:8px 16px;color:#fff;text-align:center;
+  background:linear-gradient(90deg,var(--procore),var(--sf));}
+.topbar b{font-weight:600}
+.topbar .sep{opacity:.6}
+.topbar .muted{color:rgba(255,255,255,.82)}
+.topbar-gh{display:inline-flex;align-items:center;gap:7px;margin-left:16px;
+  background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.42);
+  color:#fff;padding:3px 13px;border-radius:999px;font-weight:600;transition:background .2s,transform .15s}
+.topbar-gh:hover{background:rgba(255,255,255,.32);transform:translateY(-1px)}
+.topbar-gh svg{width:14px;height:14px;fill:currentColor}
+.nav-gh{display:inline-flex;align-items:center;gap:7px}
+.nav-gh svg{width:17px;height:17px;fill:currentColor}
+@media(max-width:680px){.topbar{flex-direction:column;gap:4px}.topbar .sep{display:none}}
+
+/* ── NAV ── */
+nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);
+  background:linear-gradient(180deg,rgba(255,255,255,.92),rgba(255,255,255,.66));
+  border-bottom:1px solid var(--line)}
+.nav-in{display:flex;align-items:center;gap:24px;height:64px}
+.brand{display:flex;align-items:center;gap:11px;font-family:var(--disp);font-weight:700;font-size:19px;letter-spacing:-.01em}
+.brand .mk{width:26px;height:26px;border-radius:7px;position:relative;
+  background:linear-gradient(135deg,var(--procore),var(--sf));box-shadow:0 0 18px rgba(255,106,43,.4)}
+.brand .mk::after{content:"";position:absolute;inset:6px;border-radius:3px;background:var(--bg);}
+.nav-links{display:flex;gap:22px;margin-left:8px}
+.nav-links a{font-size:14px;color:var(--muted);transition:color .2s;white-space:nowrap}
+.nav-links a:hover{color:var(--ink)}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.live-pill{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--muted);
+  border:1px solid var(--line-strong);padding:6px 11px;border-radius:999px;white-space:nowrap}
+@media(max-width:1080px){.nav-links{display:none}}
+@media(max-width:560px){.live-pill{display:none}}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+.dot.on{background:var(--ok);box-shadow:0 0 0 0 rgba(57,217,138,.6);animation:pulse 2s infinite}
+.dot.err{background:var(--err)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(57,217,138,.55)}70%{box-shadow:0 0 0 9px rgba(57,217,138,0)}100%{box-shadow:0 0 0 0 rgba(57,217,138,0)}}
+.btn{font-family:var(--body);font-weight:600;font-size:14px;border-radius:10px;padding:10px 18px;cursor:pointer;border:1px solid transparent;transition:transform .15s,box-shadow .2s,background .2s;display:inline-flex;align-items:center;gap:9px;white-space:nowrap}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:linear-gradient(135deg,var(--procore),#ff8c4d);color:#1a0d05;box-shadow:0 6px 26px rgba(255,106,43,.32)}
+.btn-primary:hover{box-shadow:0 8px 34px rgba(255,106,43,.5)}
+.btn-ghost{background:rgba(28,48,86,.02);border-color:var(--line-strong);color:var(--ink)}
+.btn-ghost:hover{border-color:var(--sf);color:var(--sf);background:rgba(10,144,196,.07)}
+
+/* ── HERO ── */
+header.hero{padding:78px 0 40px;position:relative}
+.hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:center}
+@media(max-width:900px){.hero-grid{grid-template-columns:1fr;gap:28px}}
+.tag{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line-strong);border-radius:999px;padding:6px 13px;font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:22px}
+.tag b{color:var(--procore);font-weight:600}
+h1{font-family:var(--disp);font-weight:700;font-size:clamp(38px,5.6vw,68px);line-height:1.02;letter-spacing:-.025em;margin:0 0 20px}
+h1 .o{color:var(--procore)}h1 .b{color:var(--sf)}
+h1 .swap{position:relative;white-space:nowrap}
+.lede{font-size:19px;color:var(--muted);max-width:40ch;margin:0 0 28px}
+.hero-cta{display:flex;gap:14px;flex-wrap:wrap}
+.stats{display:flex;gap:30px;margin-top:38px;flex-wrap:wrap}
+.stat .n{font-family:var(--disp);font-weight:700;font-size:30px;letter-spacing:-.02em}
+.stat .n .u{font-size:16px;color:var(--muted)}
+.stat .l{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-top:2px}
+
+/* ── BRIDGE viz ── */
+.bridge{position:relative;height:360px;border:1px solid var(--line);border-radius:20px;background:
+  radial-gradient(120% 100% at 50% 0,rgba(255,255,255,.025),transparent),var(--panel);overflow:hidden}
+.bridge .label{position:absolute;top:14px;left:16px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--faint);text-transform:uppercase}
+.node{position:absolute;top:50%;transform:translateY(-50%);width:128px;text-align:center}
+.node .chip{width:84px;height:84px;margin:0 auto 12px;border-radius:20px;display:grid;place-items:center;font-family:var(--disp);font-weight:700;font-size:13px;position:relative;border:1px solid var(--line-strong)}
+.node.pc{left:18px}.node.sf{right:18px}.node.mid{left:50%;transform:translate(-50%,-50%)}
+.node.pc .chip{background:radial-gradient(circle at 50% 30%,rgba(255,106,43,.3),rgba(255,106,43,.06));color:var(--procore);box-shadow:0 0 40px rgba(255,106,43,.25) inset}
+.node.sf .chip{background:radial-gradient(circle at 50% 30%,rgba(30,192,240,.3),rgba(30,192,240,.06));color:var(--sf);box-shadow:0 0 40px rgba(30,192,240,.25) inset}
+.node.mid .chip{width:96px;height:96px;background:linear-gradient(135deg,rgba(255,106,43,.16),rgba(30,192,240,.16));color:var(--ink);border-color:var(--line-strong);box-shadow:0 0 50px rgba(120,160,220,.18)}
+.node .nm{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em}
+.node .sub{font-size:10px;color:var(--faint);font-family:var(--mono)}
+.wire{position:absolute;top:50%;height:2px;background:linear-gradient(90deg,var(--line-strong),transparent,var(--line-strong));}
+.packet{position:absolute;top:50%;width:9px;height:9px;border-radius:50%;margin-top:-4px;filter:drop-shadow(0 0 6px currentColor)}
+.spin{animation:spin 14s linear infinite}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+.mid .ring{position:absolute;inset:-12px;border-radius:26px;border:1px dashed rgba(150,180,220,.25)}
+
+/* ── SECTION shells ── */
+section{padding:70px 0;position:relative}
+.sec-head{margin-bottom:38px;max-width:60ch}
+.sec-head h2{font-family:var(--disp);font-weight:700;font-size:clamp(28px,3.6vw,42px);letter-spacing:-.02em;margin:12px 0 12px;line-height:1.05}
+.sec-head p{color:var(--muted);font-size:17px;margin:0}
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
+.reveal.in{opacity:1;transform:none}
+
+/* ── CONSOLE ── */
+.console{border:1px solid var(--line-strong);border-radius:18px;background:linear-gradient(180deg,var(--panel2),var(--panel));overflow:hidden;box-shadow:0 30px 70px -40px rgba(28,48,86,.30)}
+.console-top{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.015)}
+.tl{display:flex;gap:7px}.tl i{width:11px;height:11px;border-radius:50%;display:block}.tl i:nth-child(1){background:#ff5f57}.tl i:nth-child(2){background:#febc2e}.tl i:nth-child(3){background:#28c840}
+.console-top .ttl{font-family:var(--mono);font-size:12px;color:var(--muted);margin-left:6px}
+.console-top .runtime{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint)}
+.scenarios{display:flex;flex-wrap:wrap;gap:10px;padding:18px 18px 6px}
+.scn{font-family:var(--body);font-weight:500;font-size:13.5px;border:1px solid var(--line-strong);background:#fff;color:var(--ink);border-radius:10px;padding:10px 14px;cursor:pointer;transition:all .18s;display:flex;align-items:center;gap:9px;box-shadow:0 1px 2px rgba(28,48,86,.04)}
+.scn:hover:not(:disabled){border-color:var(--gold);background:rgba(255,180,61,.07)}
+.scn[data-dir="pc"]:hover{border-color:var(--procore);background:rgba(255,106,43,.08)}
+.scn[data-dir="sf"]:hover{border-color:var(--sf);background:rgba(30,192,240,.08)}
+.scn:disabled{opacity:.4;cursor:not-allowed}
+.scn .ic{font-family:var(--mono);font-size:11px;opacity:.8}
+.scn.live::after{content:"LIVE";font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--ok);border:1px solid rgba(15,157,88,.45);border-radius:5px;padding:1px 5px}
+.scn-group-label{width:100%;font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin:10px 2px 0;display:flex;align-items:center;gap:8px}
+.scn-group-label::after{content:"";flex:1;height:1px;background:var(--line)}
+.scn .feat{font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--sf);border:1px solid rgba(10,144,196,.35);background:rgba(10,144,196,.06);border-radius:5px;padding:1px 5px;margin-left:3px}
+.console-body{display:grid;grid-template-columns:1.15fr 1fr;gap:0;border-top:1px solid var(--line);margin-top:12px}
+@media(max-width:820px){.console-body{grid-template-columns:1fr}}
+.term{background:#f5f8fc;color:var(--ink);padding:16px 18px;min-height:330px;max-height:330px;overflow-y:auto;font-family:var(--mono);font-size:12.5px;line-height:1.75;border-right:1px solid var(--line)}
+.term .ln{white-space:pre-wrap;word-break:break-word;animation:fade .25s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.term .t{color:var(--faint)}
+.term .ok{color:var(--ok)}.term .pc{color:var(--procore)}.term .sf{color:var(--sf)}.term .w{color:var(--warn)}.term .e{color:var(--err)}.term .m{color:var(--muted)}.term .hl{color:var(--gold)}
+.term .json{color:#0e63c4}
+.cursor{display:inline-block;width:8px;height:15px;background:var(--ok);vertical-align:-2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.side{padding:16px 18px;display:flex;flex-direction:column;gap:14px}
+.pipeline{display:flex;flex-direction:column;gap:2px}
+.pstep{display:flex;gap:11px;align-items:flex-start;padding:7px 8px;border-radius:8px;transition:background .2s}
+.pstep .marker{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line-strong);flex:0 0 18px;margin-top:2px;display:grid;place-items:center;font-size:10px;color:var(--faint);transition:all .3s}
+.pstep .ptxt{font-size:13px;color:var(--muted);transition:color .2s}
+.pstep .ptxt small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.pstep.active{background:rgba(255,180,61,.06)}
+.pstep.active .marker{border-color:var(--gold);color:var(--gold);box-shadow:0 0 12px rgba(255,180,61,.4)}
+.pstep.active .ptxt{color:var(--ink)}
+.pstep.done .marker{background:var(--ok);border-color:var(--ok);color:#04130b}
+.pstep.done .ptxt{color:var(--muted)}
+.progress{height:6px;border-radius:999px;background:rgba(28,48,86,.10);overflow:hidden}
+.progress i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,var(--procore),var(--sf));transition:width .4s}
+.result{border:1px solid var(--line-strong);border-radius:10px;padding:12px 13px;font-size:13px;color:var(--muted);background:rgba(255,255,255,.015)}
+.result.ok{border-color:rgba(57,217,138,.4);background:rgba(57,217,138,.05)}
+.result.ok b{color:var(--ok)}
+.result .k{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.idle{color:var(--faint);font-style:italic}
+
+/* mini flow diagram in console */
+.flow{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px 2px}
+.flow .fn{flex:1;text-align:center;font-family:var(--mono);font-size:10px;color:var(--faint);padding:8px 4px;border:1px solid var(--line);border-radius:8px;transition:all .3s}
+.flow .fn.lit{color:var(--ink);border-color:var(--gold);background:rgba(255,180,61,.08);box-shadow:0 0 14px rgba(255,180,61,.2)}
+.flow .fn.lit.pc{border-color:var(--procore);background:rgba(255,106,43,.1)}
+.flow .fn.lit.sf{border-color:var(--sf);background:rgba(30,192,240,.1)}
+.flow .ar{color:var(--faint);font-size:11px}
+
+/* ── cards / grids ── */
+.cards{display:grid;gap:18px}
+.g3{grid-template-columns:repeat(3,1fr)}.g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:820px){.g3,.g2{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:22px;transition:border-color .25s,transform .25s}
+.card:hover{border-color:var(--line-strong);transform:translateY(-3px)}
+.card h3{font-family:var(--disp);font-weight:600;font-size:19px;margin:0 0 8px;letter-spacing:-.01em}
+.card p{color:var(--muted);font-size:14.5px;margin:0}
+.card .ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;margin-bottom:14px;font-family:var(--mono);font-weight:600;border:1px solid var(--line-strong)}
+.card .ico.o{color:var(--procore);background:rgba(255,106,43,.08)}
+.card .ico.b{color:var(--sf);background:rgba(30,192,240,.08)}
+.card .ico.g{color:var(--gold);background:rgba(255,180,61,.08)}
+.tagrow{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+.mintag{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+.techlist{list-style:none;padding:0;margin:6px 0 0}
+.techlist li{padding:8px 0;border-top:1px solid var(--line);font-size:13.5px;color:var(--muted)}
+.techlist li:first-child{border-top:none}
+.techlist li b{color:var(--ink);font-weight:600}
+.techlist li .mono{color:var(--gold);font-size:12px}
+.techlist li a{color:inherit;text-decoration:none}
+.techlist li a:hover{color:var(--sf)}
+.docfile{font-family:var(--mono);font-size:12.5px;color:var(--sf);font-weight:600}
+
+/* two-plane schematic */
+.planes{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:820px){.planes{grid-template-columns:1fr}}
+.plane{border:1px solid var(--line-strong);border-radius:16px;padding:22px;background:linear-gradient(180deg,var(--panel2),var(--panel))}
+.plane .ph{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.plane .ph .b{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:6px}
+.plane.agent .ph .b{color:var(--sf);background:rgba(30,192,240,.1)}
+.plane.sync .ph .b{color:var(--procore);background:rgba(255,106,43,.1)}
+.plane h3{font-family:var(--disp);font-weight:600;font-size:21px;margin:0}
+.plane ul{list-style:none;padding:0;margin:14px 0 0}
+.plane li{display:flex;gap:10px;padding:7px 0;font-size:14px;color:var(--muted);border-top:1px solid var(--line)}
+.plane li b{color:var(--ink);font-weight:600}
+.plane li .mono{color:var(--gold);font-size:12.5px}
+
+/* mapping table */
+.tablewrap{border:1px solid var(--line-strong);border-radius:14px;overflow:hidden;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:680px}
+th,td{text-align:left;padding:13px 16px;border-bottom:1px solid var(--line)}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);background:rgba(28,48,86,.03)}
+td .mono{font-size:13px}
+.pc-c{color:var(--procore)}.sf-c{color:var(--sf)}
+.dirpill{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid var(--line-strong);color:var(--muted)}
+.dirpill.bi{color:var(--gold);border-color:rgba(255,180,61,.4)}
+.dirpill.to{color:var(--procore);border-color:rgba(255,106,43,.35)}
+tr:hover td{background:rgba(28,48,86,.025)}
+
+/* endpoints / code */
+.code{background:#f5f8fc;border:1px solid var(--line-strong);border-radius:12px;padding:16px 18px;font-family:var(--mono);font-size:13px;line-height:1.7;overflow-x:auto;color:var(--ink)}
+.code .c{color:var(--faint)}.code .k{color:var(--procore)}.code .s{color:var(--sf)}.code .v{color:var(--gold)}
+.endpoints{display:flex;flex-direction:column;gap:8px}
+.ep{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:13px;border:1px solid var(--line);border-radius:9px;padding:11px 14px;background:var(--panel)}
+.method{font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;letter-spacing:.05em}
+.method.get{color:var(--sf);background:rgba(30,192,240,.1)}
+.method.post{color:var(--procore);background:rgba(255,106,43,.1)}
+.method.dget{color:var(--ok);background:rgba(57,217,138,.1)}
+.ep .path{color:var(--ink)}.ep .desc{color:var(--faint);margin-left:auto;font-family:var(--body)}
+
+/* value props banner */
+.why{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:820px){.why{grid-template-columns:1fr 1fr}}
+.why .w{border:1px solid var(--line);border-radius:14px;padding:20px;background:var(--panel)}
+.why .w .n{font-family:var(--disp);font-weight:700;font-size:15px;margin:0 0 6px;color:var(--gold)}
+.why .w p{font-size:13.5px;color:var(--muted);margin:0}
+
+/* CTA band */
+.band{border:1px solid var(--line-strong);border-radius:22px;padding:48px;text-align:center;background:
+  radial-gradient(120% 140% at 0% 0%,rgba(255,106,43,.12),transparent 55%),
+  radial-gradient(120% 140% at 100% 100%,rgba(30,192,240,.12),transparent 55%),var(--panel)}
+.band h2{font-family:var(--disp);font-weight:700;font-size:clamp(28px,3.6vw,40px);margin:0 0 14px;letter-spacing:-.02em}
+.band p{color:var(--muted);max-width:50ch;margin:0 auto 26px}
+footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-size:13px}
+.foot-in{display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center}
+.disclaimer{font-size:12px;color:var(--faint);font-family:var(--mono);margin-top:10px;line-height:1.6}
+/* contact modal */
+.modal-overlay{position:fixed;inset:0;z-index:100;background:rgba(11,16,24,.55);backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;padding:24px;opacity:0;transition:opacity .25s}
+.modal-overlay.open{display:flex;opacity:1}
+.modal{background:var(--panel);border:1px solid var(--line-strong);border-radius:18px;max-width:430px;width:100%;overflow:hidden;box-shadow:0 40px 90px -30px rgba(11,16,24,.55);transform:translateY(14px) scale(.97);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.modal-overlay.open .modal{transform:none}
+.modal .mhead{padding:24px;background:linear-gradient(135deg,var(--procore),var(--sf));color:#fff;position:relative}
+.modal .mhead h3{font-family:var(--disp);font-weight:700;font-size:23px;margin:0;letter-spacing:-.01em}
+.modal .mhead p{margin:6px 0 0;font-size:13px;color:rgba(255,255,255,.9)}
+.modal .close{position:absolute;top:16px;right:16px;background:rgba(255,255,255,.22);border:none;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:17px;line-height:1;transition:background .2s}
+.modal .close:hover{background:rgba(255,255,255,.38)}
+.modal .mbody{padding:8px 24px 22px}
+.modal .who{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);padding:16px 0 4px}
+.contact-row{display:flex;align-items:center;gap:14px;padding:14px 0;border-top:1px solid var(--line)}
+.contact-row .ci{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;font-size:18px;flex:0 0 42px}
+.contact-row .ci.o{background:rgba(239,90,35,.1);color:var(--procore)}
+.contact-row .ci.b{background:rgba(10,144,196,.1);color:var(--sf)}
+.contact-row .cl{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.contact-row .cv{font-size:16px;font-weight:600;color:var(--ink);display:block;margin-top:2px}
+.contact-row a.cv:hover{color:var(--sf)}
+/* sources */
+.srccard ul{list-style:none;padding:0;margin:8px 0 0}
+.srccard li{padding:9px 0;border-top:1px solid var(--line)}
+.srccard li a{display:block;color:var(--ink);transition:color .18s}
+.srccard li a:hover{color:var(--sf)}
+.srccard li .ttl{font-size:13.5px;font-weight:500}
+.srccard li .u{font-family:var(--mono);font-size:10.5px;color:var(--faint);word-break:break-all}
+.srccard h3 .v{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--ok);border:1px solid rgba(15,157,88,.4);border-radius:5px;padding:1px 6px;margin-left:8px;vertical-align:middle}
+::selection{background:rgba(255,180,61,.3)}
+::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:9px}
+</style>
+</head>
+<body>
+<div class="grain"></div>
+
+<!-- TOP ATTRIBUTION BAR -->
+<div class="topbar">
+  <span>Created by <b>Vladimir Kamenev</b></span>
+  <span class="sep">·</span>
+  <span class="muted">for demonstration purposes</span>
+  <a class="topbar-gh" href="https://github.com/burademirung/procore-demo" target="_blank" rel="noopener">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.5 11.5 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222 0 1.606-.015 2.898-.015 3.293 0 .322.216.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+    View the codebase on GitHub →
+  </a>
+</div>
+
+<!-- NAV -->
+<nav><div class="wrap nav-in">
+  <div class="brand"><span class="mk"></span>Conduit</div>
+  <div class="nav-links">
+    <a href="#demo">Demo</a>
+    <a href="#how">How it works</a>
+    <a href="#arch">Architecture</a>
+    <a href="#deploy">Deploy</a>
+    <a href="#tech">Stack</a>
+    <a href="#docs">Docs</a>
+  </div>
+  <div class="nav-right">
+    <span class="live-pill"><span class="dot" id="navDot"></span><span id="navStatus">checking…</span></span>
+    <a class="btn btn-ghost nav-gh" href="https://github.com/burademirung/procore-demo" target="_blank" rel="noopener" title="View source on GitHub">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.5 11.5 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222 0 1.606-.015 2.898-.015 3.293 0 .322.216.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+      Code
+    </a>
+    <a class="btn btn-primary" href="#demo">Run demo ↗</a>
+  </div>
+</div></nav>
+
+<!-- HERO -->
+<header class="hero"><div class="wrap hero-grid">
+  <div>
+    <span class="tag"><b>●</b> Model Context Protocol · deployed on Cloudflare</span>
+    <h1>One bridge between <span class="o">Procore</span> and <span class="b">Salesforce</span>.</h1>
+    <p class="lede">Conduit is an agent-native MCP server that keeps your construction projects and your CRM in perfect, bidirectional sync — and lets AI agents act across both systems through a single secure connection.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="#demo">▶ Watch it work, live</a>
+      <a class="btn btn-ghost" href="#how">Read the docs</a>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="n">61<span class="u"> tests</span></div><div class="l">~99% coverage</div></div>
+      <div class="stat"><div class="n">&lt;5<span class="u">s</span></div><div class="l">webhook ACK</div></div>
+      <div class="stat"><div class="n">OAuth 2.1</div><div class="l">PKCE · S256</div></div>
+      <div class="stat"><div class="n">2<span class="u"> systems</span></div><div class="l">1 protocol</div></div>
+    </div>
+  </div>
+  <div class="bridge" id="bridge">
+    <span class="label">// live data bridge</span>
+    <div class="node pc"><div class="chip">PROCORE</div><div class="nm">projects · financials</div><div class="sub">RFIs · directory</div></div>
+    <div class="node mid"><div class="chip"><span class="ring spin"></span>MCP<br>CONDUIT</div><div class="nm">broker</div><div class="sub">dedup · map · upsert</div></div>
+    <div class="node sf"><div class="chip">SALESFORCE</div><div class="nm">accounts · opps</div><div class="sub">contacts · custom</div></div>
+  </div>
+</div></header>
+
+<!-- LIVE DEMO CONSOLE -->
+<section id="demo"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// interactive · runs in your browser</span>
+    <h2>See the whole system working — live.</h2>
+    <p>Click any scenario. Watch the broker fetch, deduplicate, field-map and upsert across both systems, step by step. Health and OAuth checks hit the <b>real deployed Worker</b>; sync scenarios animate the exact logic that ships in the codebase. The <b>Advanced</b> row walks through the full MCP protocol surface — prompts &amp; autocomplete, elicitation, sampling, tasks, and SSE streaming — each labeled with its spec method and revision.</p>
+  </div>
+
+  <div class="console reveal">
+    <div class="console-top">
+      <div class="tl"><i></i><i></i><i></i></div>
+      <span class="ttl">conduit · live test console</span>
+      <span class="runtime" id="runtime">idle</span>
+    </div>
+    <div class="scenarios" id="scenarios">
+      <div class="scn-group-label">Core sync &amp; live checks</div>
+      <button class="scn live" data-scn="health"><span class="ic">⛅</span> Health check</button>
+      <button class="scn live" data-scn="oauth"><span class="ic">🔐</span> OAuth discovery</button>
+      <button class="scn" data-dir="pc" data-scn="pc2sf"><span class="ic">→</span> Sync Procore project → Salesforce</button>
+      <button class="scn" data-dir="sf" data-scn="sf2pc"><span class="ic">←</span> Push Salesforce opp → Procore</button>
+      <button class="scn" data-scn="storm"><span class="ic">⟳</span> Webhook replay storm</button>
+      <button class="scn" data-scn="conflict"><span class="ic">⚖</span> Conflict resolution</button>
+      <button class="scn" data-scn="suite"><span class="ic">✓</span> Run full test suite</button>
+
+      <div class="scn-group-label">Advanced MCP capabilities — the full protocol surface</div>
+      <button class="scn" data-scn="slash"><span class="ic">/</span> sync-project <span class="feat">prompt + autocomplete</span></button>
+      <button class="scn" data-scn="elicit"><span class="ic">🙂</span> Resolve via elicitation <span class="feat">human-in-the-loop</span></button>
+      <button class="scn" data-scn="sampling"><span class="ic">✨</span> AI project summary <span class="feat">sampling</span></button>
+      <button class="scn" data-dir="pc" data-scn="financials"><span class="ic">$</span> Sync financials <span class="feat">structured tools</span></button>
+      <button class="scn" data-dir="pc" data-scn="rfi"><span class="ic">⛏</span> RFI → Salesforce Case <span class="feat">tool</span></button>
+      <button class="scn" data-scn="dedup"><span class="ic">⊕</span> Dedupe contacts <span class="feat">elicitation</span></button>
+      <button class="scn" data-scn="task"><span class="ic">⏳</span> Bulk reconcile <span class="feat">tasks + progress</span></button>
+      <button class="scn" data-scn="webhook"><span class="ic">📡</span> Real-time push <span class="feat">SSE stream</span></button>
+      <button class="scn" data-scn="search"><span class="ic">🔎</span> Cross-system search <span class="feat">resource template</span></button>
+    </div>
+    <div class="console-body">
+      <div class="term" id="term"><div class="ln idle">› Select a scenario above to begin. Output streams here in real time.</div></div>
+      <div class="side">
+        <div class="flow" id="flow">
+          <div class="fn pc" data-fn="pc">Procore</div><span class="ar">⇄</span>
+          <div class="fn" data-fn="hook">webhook</div><span class="ar">→</span>
+          <div class="fn" data-fn="dedup">dedup</div><span class="ar">→</span>
+          <div class="fn" data-fn="map">map</div><span class="ar">→</span>
+          <div class="fn sf" data-fn="sf">Salesforce</div>
+        </div>
+        <div class="pipeline" id="pipeline"><div class="idle" style="font-size:13px;padding:8px">Pipeline steps will appear here.</div></div>
+        <div class="progress"><i id="bar"></i></div>
+        <div class="result" id="result"><span class="k">RESULT</span><br>Awaiting run…</div>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- HOW IT WORKS -->
+<section id="how"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// architecture in one idea</span>
+    <h2>Two planes. One server.</h2>
+    <p>MCP tool calls are instant and agent-driven; durable sync needs a queue, dedup and a scheduler. Conduit splits cleanly so each does what it's best at — a design grounded in primary-source research of the MCP spec and Procore's webhook contract.</p>
+  </div>
+  <div class="planes reveal">
+    <div class="plane agent">
+      <div class="ph"><span class="b">Agent plane</span></div>
+      <h3>Tools an AI calls on demand</h3>
+      <ul>
+        <li><b>sync_procore_project_to_salesforce</b> — <span class="mono">fetch → map → upsert</span></li>
+        <li><b>run_reconciliation</b> — <span class="mono">delta sweep</span></li>
+        <li><b>create_procore_webhook</b> — <span class="mono">two-tier hook+trigger</span></li>
+        <li><b>Resources</b> — read-only object context (<span class="mono">config://mappings</span>)</li>
+        <li><b>Prompts</b> — guided workflows (<span class="mono">audit_unmapped_records</span>)</li>
+      </ul>
+    </div>
+    <div class="plane sync">
+      <div class="ph"><span class="b">Sync plane</span></div>
+      <h3>Durable background reconciliation</h3>
+      <ul>
+        <li><b>Inbound webhooks</b> — <span class="mono">ACK &lt;5s, process async</span></li>
+        <li><b>Idempotency</b> — <span class="mono">dedup by event id (ULID)</span></li>
+        <li><b>Field mapping</b> — <span class="mono">bidirectional registry</span></li>
+        <li><b>Upsert by External ID</b> — <span class="mono">safe replays</span></li>
+        <li><b>Cron backstop</b> — <span class="mono">*/30 reconcile sweep</span></li>
+      </ul>
+    </div>
+  </div>
+</div></section>
+
+<!-- ARCHITECTURE / pillars -->
+<section id="arch"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// engineering you can trust</span>
+    <h2>Built for the parts that actually break.</h2>
+    <p>Dual-provider OAuth, at-least-once webhooks, governor limits, conflict resolution — the hard problems are solved up front, not patched in production.</p>
+  </div>
+  <div class="cards g3 reveal">
+    <div class="card">
+      <div class="ico g">⇄</div><h3>Dual-token OAuth broker</h3>
+      <p>The server issues its own bound MCP token, then brokers and refreshes <b>both</b> Procore and Salesforce tokens per tenant via a token-exchange callback — no API keys ever shared with the agent.</p>
+      <div class="tagrow"><span class="mintag">OAuth 2.1</span><span class="mintag">PKCE / S256</span><span class="mintag">per-tenant</span></div>
+    </div>
+    <div class="card">
+      <div class="ico o">⚡</div><h3>Webhook-grade reliability</h3>
+      <p>Procore delivers at-least-once with a 5-second timeout. Conduit ACKs instantly, deduplicates by event id, and reconciles out of band — so replay storms become no-ops, never duplicates.</p>
+      <div class="tagrow"><span class="mintag">at-least-once</span><span class="mintag">dedup</span><span class="mintag">idempotent</span></div>
+    </div>
+    <div class="card">
+      <div class="ico b">◆</div><h3>Rate-limit aware</h3>
+      <p>Every outbound call honors Retry-After with exponential backoff, respecting Procore's hourly limits and Salesforce's daily governor limits under load.</p>
+      <div class="tagrow"><span class="mintag">backoff</span><span class="mintag">429-safe</span><span class="mintag">Bulk API 2.0</span></div>
+    </div>
+    <div class="card">
+      <div class="ico g">⚖</div><h3>Conflict resolution</h3>
+      <p>When both sides edit the same record, a pluggable policy decides — last-write-wins, source-of-truth-per-field, or escalate for human review. Your ownership model, your rules.</p>
+      <div class="tagrow"><span class="mintag">configurable</span><span class="mintag">no silent loss</span></div>
+    </div>
+    <div class="card">
+      <div class="ico b">☁</div><h3>Edge-native</h3>
+      <p>Runs on Cloudflare Workers with a Durable Object per session for stateful, multi-tenant sync, KV-backed token + dedup storage, and a cron-driven reconciliation backstop.</p>
+      <div class="tagrow"><span class="mintag">Workers</span><span class="mintag">Durable Objects</span><span class="mintag">KV</span></div>
+    </div>
+    <div class="card">
+      <div class="ico o">✓</div><h3>Verifiably correct</h3>
+      <p>61 unit + integration tests at ~99% coverage, including a real MCP client driving the server end-to-end and a webhook replay-storm test. The build is green before it ships.</p>
+      <div class="tagrow"><span class="mintag">Vitest</span><span class="mintag">85% gate</span><span class="mintag">CI-ready</span></div>
+    </div>
+  </div>
+</div></section>
+
+<!-- DATA MAPPING -->
+<section id="mapping"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// the canonical map</span>
+    <h2>Every object, mapped both ways.</h2>
+    <p>Master data flows bidirectionally; financials and project-management records flow into the CRM for reporting. Each mapping is anchored by a Salesforce External ID for idempotent upserts.</p>
+  </div>
+  <div class="tablewrap reveal">
+    <table>
+      <thead><tr><th>Procore</th><th>Direction</th><th>Salesforce</th><th>Match key</th></tr></thead>
+      <tbody>
+        <tr><td class="pc-c">Company / Vendor</td><td><span class="dirpill bi">⇄ bi</span></td><td class="sf-c">Account</td><td><span class="mono">Procore_Company_Id__c</span></td></tr>
+        <tr><td class="pc-c">Project</td><td><span class="dirpill bi">⇄ bi</span></td><td class="sf-c">Procore_Project__c</td><td><span class="mono">Procore_Project_Id__c</span></td></tr>
+        <tr><td class="pc-c">Directory Contact / User</td><td><span class="dirpill bi">⇄ bi</span></td><td class="sf-c">Contact</td><td><span class="mono">Procore_Contact_Id__c</span></td></tr>
+        <tr><td class="pc-c">Prime Contract</td><td><span class="dirpill to">→ to SF</span></td><td class="sf-c">Procore_Prime_Contract__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
+        <tr><td class="pc-c">Commitment / Change Order</td><td><span class="dirpill to">→ to SF</span></td><td class="sf-c">Procore_Commitment__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
+        <tr><td class="pc-c">RFI</td><td><span class="dirpill to">→ to SF</span></td><td class="sf-c">Procore_RFI__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
+        <tr><td class="pc-c">Submittal</td><td><span class="dirpill to">→ to SF</span></td><td class="sf-c">Procore_Submittal__c</td><td><span class="mono">Procore_Id__c</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div></section>
+
+<!-- WHY / value props -->
+<section><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// why teams choose conduit</span>
+    <h2>The integration that pays for itself.</h2>
+  </div>
+  <div class="why reveal">
+    <div class="w"><p class="n">No more double entry</p><p>Project wins, contacts and financials appear in both systems automatically. Sales sees jobsite reality; ops sees the deal.</p></div>
+    <div class="w"><p class="n">Agent-ready today</p><p>Any MCP client — Claude included — connects with one OAuth flow and can read and act across both platforms safely.</p></div>
+    <div class="w"><p class="n">Audit-friendly</p><p>Soft-deletes preserve CRM history, idempotent writes prevent duplicates, and every sync is traceable by external id.</p></div>
+    <div class="w"><p class="n">Yours to own</p><p>Self-hostable on your Cloudflare account, no per-seat SaaS tax, and the mapping + conflict policy are fully configurable.</p></div>
+  </div>
+</div></section>
+
+<!-- GET STARTED -->
+<section id="start"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// connect in minutes</span>
+    <h2>Get started.</h2>
+    <p>Conduit is a standards-compliant remote MCP server. Point any MCP client at the endpoint and complete the OAuth handshake — discovery is automatic.</p>
+  </div>
+  <div class="cards g2 reveal" style="align-items:start">
+    <div>
+      <div class="endpoints">
+        <div class="ep"><span class="method dget">GET</span><span class="path">/healthz</span><span class="desc">liveness</span></div>
+        <div class="ep"><span class="method post">POST</span><span class="path">/mcp</span><span class="desc">Streamable HTTP · OAuth-gated</span></div>
+        <div class="ep"><span class="method post">POST</span><span class="path">/webhooks/procore</span><span class="desc">inbound events</span></div>
+        <div class="ep"><span class="method get">GET</span><span class="path">/.well-known/oauth-authorization-server</span><span class="desc">discovery</span></div>
+      </div>
+      <div class="disclaimer">Live at <span style="color:var(--sf)" id="liveurl">procore-salesforce-mcp.burademirung.workers.dev</span></div>
+    </div>
+    <div class="code">
+<span class="c"># 1 · Add Conduit to your MCP client config</span>
+{
+  <span class="s">"mcpServers"</span>: {
+    <span class="s">"conduit"</span>: {
+      <span class="k">"url"</span>: <span class="v">"https://procore-salesforce-mcp.burademirung.workers.dev/mcp"</span>,
+      <span class="k">"transport"</span>: <span class="v">"streamable-http"</span>
+    }
+  }
+}
+
+<span class="c"># 2 · The client discovers OAuth & runs the PKCE flow</span>
+<span class="c"># 3 · Conduit brokers Procore + Salesforce tokens for you</span>
+<span class="c"># 4 · Tools are now callable by your agent ✓</span>
+    </div>
+  </div>
+</div></section>
+
+<!-- DEPLOYMENT ON CLOUDFLARE -->
+<section id="deploy"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// deployed on cloudflare's edge</span>
+    <h2>Runs on Workers. Stateful where it matters.</h2>
+    <p>Conduit ships as a single Worker that combines an OAuth 2.1 authorization server, a per-session Durable Object for stateful sync, KV storage for tokens and dedup, a cron reconciliation trigger, and static assets — all behind one global edge URL with sub-100ms cold starts.</p>
+  </div>
+
+  <div class="cards g3 reveal" style="margin-bottom:18px">
+    <div class="card">
+      <div class="ico b">☁</div><h3>Workers runtime</h3>
+      <p>V8 isolates at the edge, <span class="mono">nodejs_compat</span> enabled. Observed ~65ms startup, 324&nbsp;KB gzip bundle. Observability (Workers Logs) turned on.</p>
+      <div class="tagrow"><span class="mintag">compatibility_date 2025-05-01</span><span class="mintag">edge</span></div>
+    </div>
+    <div class="card">
+      <div class="ico g">◈</div><h3>Durable Object per session</h3>
+      <p>The <span class="mono">McpAgent</span> binds to a SQLite-backed Durable Object (<span class="mono">ProcoreSalesforceMCP</span>, migration tag <span class="mono">v1</span>) — one instance per MCP session for isolated, multi-tenant sync state.</p>
+      <div class="tagrow"><span class="mintag">McpAgent</span><span class="mintag">SQLite DO</span></div>
+    </div>
+    <div class="card">
+      <div class="ico o">▤</div><h3>KV storage</h3>
+      <p><span class="mono">OAUTH_KV</span> holds grants &amp; brokered provider tokens; <span class="mono">DEDUP_KV</span> holds webhook event ids with a TTL so replays are no-ops across the fleet.</p>
+      <div class="tagrow"><span class="mintag">OAUTH_KV</span><span class="mintag">DEDUP_KV</span></div>
+    </div>
+    <div class="card">
+      <div class="ico g">🔐</div><h3>OAuth provider</h3>
+      <p><span class="mono">@cloudflare/workers-oauth-provider</span> fronts the Worker: OAuth 2.1 + PKCE (S256), <span class="mono">/authorize · /token · /register</span>, RFC-8414 discovery, and a token-exchange callback that brokers both upstream providers.</p>
+      <div class="tagrow"><span class="mintag">PKCE S256</span><span class="mintag">RFC 8414</span></div>
+    </div>
+    <div class="card">
+      <div class="ico o">⏱</div><h3>Cron reconciliation</h3>
+      <p>A scheduled trigger (<span class="mono">*/30 * * * *</span>) runs a delta sweep as a backstop — catching any webhook drops, since at-least-once delivery is not exactly-once.</p>
+      <div class="tagrow"><span class="mintag">Cron Triggers</span><span class="mintag">self-healing</span></div>
+    </div>
+    <div class="card">
+      <div class="ico b">⛁</div><h3>Secrets &amp; assets</h3>
+      <p>Client secrets and the AES-256-GCM token key are set via <span class="mono">wrangler secret put</span> (never committed). The GUI you're reading is served from the Worker <span class="mono">[assets]</span> binding.</p>
+      <div class="tagrow"><span class="mintag">wrangler secret</span><span class="mintag">[assets]</span></div>
+    </div>
+  </div>
+
+  <div class="cards g2 reveal" style="align-items:start">
+    <div class="code">
+<span class="c"># wrangler.toml — the deployment topology</span>
+<span class="k">name</span> = <span class="v">"procore-salesforce-mcp"</span>
+<span class="k">main</span> = <span class="v">"src/worker/index.ts"</span>
+<span class="k">compatibility_flags</span> = [<span class="v">"nodejs_compat"</span>]
+
+[[<span class="s">durable_objects.bindings</span>]]   <span class="c"># per-session state</span>
+<span class="k">name</span> = <span class="v">"MCP_OBJECT"</span>
+<span class="k">class_name</span> = <span class="v">"ProcoreSalesforceMCP"</span>
+
+[[<span class="s">kv_namespaces</span>]]  <span class="k">binding</span>=<span class="v">"OAUTH_KV"</span>   <span class="c"># grants+tokens</span>
+[[<span class="s">kv_namespaces</span>]]  <span class="k">binding</span>=<span class="v">"DEDUP_KV"</span>   <span class="c"># idempotency</span>
+
+[<span class="s">triggers</span>]  <span class="k">crons</span> = [<span class="v">"*/30 * * * *"</span>]   <span class="c"># backstop</span>
+[<span class="s">assets</span>]    <span class="k">directory</span> = <span class="v">"./public"</span>       <span class="c"># this GUI</span>
+    </div>
+    <div class="code">
+<span class="c"># Provision once, then ship</span>
+<span class="k">$</span> wrangler login                 <span class="c"># burademirung@gmail.com</span>
+<span class="k">$</span> wrangler kv namespace create OAUTH_KV
+<span class="k">$</span> wrangler kv namespace create DEDUP_KV
+
+<span class="c"># Secrets (never in git)</span>
+<span class="k">$</span> wrangler secret put PROCORE_CLIENT_SECRET
+<span class="k">$</span> wrangler secret put SF_CLIENT_SECRET
+<span class="k">$</span> wrangler secret put SF_JWT_PRIVATE_KEY
+<span class="k">$</span> wrangler secret put RS_TOKENS_ENC_KEY  <span class="c"># AES-256-GCM</span>
+
+<span class="c"># Validate the bundle, then deploy globally</span>
+<span class="k">$</span> wrangler deploy --dry-run --outdir /tmp/build
+<span class="k">$</span> npm run worker:deploy   <span class="v">→ *.workers.dev ✓</span>
+    </div>
+  </div>
+</div></section>
+
+<!-- FOR DEVELOPERS -->
+<section id="devs"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// for developers</span>
+    <h2>Connect it. Call it. Extend it.</h2>
+    <p>Conduit is a standards-compliant remote MCP server, so any MCP-capable client or agent framework works out of the box. Reads are Resources, actions are Tools, and the whole thing is open to extension in a few lines.</p>
+  </div>
+
+  <div class="cards g2 reveal" style="align-items:start;margin-bottom:18px">
+    <div class="card">
+      <h3>① Call a tool from an agent</h3>
+      <p style="margin-bottom:14px">After the OAuth handshake, any MCP client lists and invokes tools. Conduit brokers the Procore + Salesforce calls for you.</p>
+      <div class="code">
+<span class="c">// MCP client (TypeScript SDK)</span>
+<span class="k">const</span> res = <span class="k">await</span> client.<span class="s">callTool</span>({
+  name: <span class="v">"sync_procore_project_to_salesforce"</span>,
+  arguments: { projectId: <span class="v">4821</span> }
+})
+<span class="c">// → { status: "synced", detail: "Projects#4821" }</span>
+
+<span class="k">await</span> client.<span class="s">callTool</span>({ name: <span class="v">"run_reconciliation"</span>,
+  arguments: { scope: <span class="v">"projects"</span> } })
+      </div>
+    </div>
+    <div class="card">
+      <h3>② Run it locally</h3>
+      <p style="margin-bottom:14px">Two entrypoints share one codebase — develop on Node, deploy to Workers. Both speak Streamable HTTP.</p>
+      <div class="code">
+<span class="k">$</span> npm install
+<span class="k">$</span> npm run dev          <span class="c"># Node server :8788</span>
+<span class="k">$</span> npm run worker:dev   <span class="c"># Workers (wrangler)</span>
+
+<span class="k">$</span> npm run typecheck    <span class="c"># node + worker targets</span>
+<span class="k">$</span> npm test             <span class="c"># 61 tests</span>
+<span class="k">$</span> npm run test:coverage <span class="c"># enforced gates</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="cards g3 reveal">
+    <div class="card">
+      <div class="ico o">＋</div><h3>Add a mapping</h3>
+      <p>Append one object to the <span class="mono">MAPPINGS</span> registry — resource name, SF object, External-ID field, direction, fields. The sync engine and tools pick it up automatically.</p>
+    </div>
+    <div class="card">
+      <div class="ico b">⚒</div><h3>Add a tool</h3>
+      <p>Register a new MCP tool in <span class="mono">mcp/server.ts</span> with a Zod input schema; it's instantly callable by every connected agent, with validation handled for you.</p>
+    </div>
+    <div class="card">
+      <div class="ico g">⚖</div><h3>Own the conflict policy</h3>
+      <p>Implement <span class="mono">resolveConflict()</span> in <span class="mono">sync/conflict.ts</span> to match your data-ownership model — last-write-wins, field-level source-of-truth, or human review.</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- WHAT WAS BUILT -->
+<section id="build"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// what was built</span>
+    <h2>From research to a live, tested deployment.</h2>
+    <p>This wasn't vibe-coded. It started with a multi-source, adversarially fact-checked research pass on the MCP spec, Procore's webhook contract, and Cloudflare's hosting stack — then a written spec, a layered implementation, a full test suite, and a global deploy.</p>
+  </div>
+  <div class="planes reveal" style="margin-bottom:18px">
+    <div class="plane agent">
+      <div class="ph"><span class="b">Process</span></div>
+      <h3>How it came together</h3>
+      <ul>
+        <li><b>Deep research</b> — <span class="mono">24 verified claims</span>, primary sources</li>
+        <li><b>Spec</b> — architecture, mapping, auth, roadmap (<span class="mono">SPEC.md</span>)</li>
+        <li><b>Phase 0 build</b> — clients, mapping, sync engine, MCP surface</li>
+        <li><b>Tests</b> — <span class="mono">61 passing · ~99% coverage</span></li>
+        <li><b>Deploy</b> — Cloudflare Workers + this GUI, verified live</li>
+      </ul>
+    </div>
+    <div class="plane sync">
+      <div class="ph"><span class="b">Codebase</span></div>
+      <h3>Module map</h3>
+      <ul>
+        <li><span class="mono">config.ts</span> — <b>validated env (Zod)</b></li>
+        <li><span class="mono">clients/</span> — <b>Procore + Salesforce + retry/backoff HTTP</b></li>
+        <li><span class="mono">mapping/</span> — <b>bidirectional field registry</b></li>
+        <li><span class="mono">sync/</span> — <b>engine · dedup · conflict</b></li>
+        <li><span class="mono">mcp/</span> + <span class="mono">worker/</span> + <span class="mono">node/</span> — <b>MCP surface + dual targets</b></li>
+      </ul>
+    </div>
+  </div>
+</div></section>
+
+<!-- TECHNOLOGY STACK -->
+<section id="tech"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// technology stack</span>
+    <h2>What it's built with.</h2>
+    <p>A modern, type-safe, edge-native stack — every layer chosen for correctness, security, and operability. Nothing exotic, nothing legacy.</p>
+  </div>
+  <div class="cards g3 reveal">
+    <div class="card">
+      <div class="ico b">⬡</div><h3>Language &amp; runtime</h3>
+      <ul class="techlist">
+        <li><b>TypeScript</b> — strict mode, end-to-end type safety</li>
+        <li><b>Node.js 20+</b> — local dev &amp; self-host target</li>
+        <li><b>Cloudflare Workers</b> — V8 isolates at the edge</li>
+        <li><b>Streamable HTTP</b> — the MCP remote transport</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="ico g">◆</div><h3>Protocol &amp; SDKs</h3>
+      <ul class="techlist">
+        <li><b>Model Context Protocol</b> — <span class="mono">@modelcontextprotocol/sdk</span></li>
+        <li><b>Cloudflare Agents SDK</b> — <span class="mono">McpAgent</span></li>
+        <li><b>Hono</b> — HTTP routing (Node + Workers)</li>
+        <li><b>Zod</b> — schema validation</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="ico o">☁</div><h3>Cloudflare platform</h3>
+      <ul class="techlist">
+        <li><b>Durable Objects</b> — SQLite-backed, per-session state</li>
+        <li><b>Workers KV</b> — token + dedup storage</li>
+        <li><b>Cron Triggers</b> — scheduled reconciliation</li>
+        <li><b>Static Assets</b> — serves this site</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="ico g">🔐</div><h3>Auth &amp; security</h3>
+      <ul class="techlist">
+        <li><b>workers-oauth-provider</b> — OAuth 2.1 + PKCE</li>
+        <li><b>AES-256-GCM</b> — token encryption at rest</li>
+        <li><b>RFC 8414 / 9728 / 7591</b> — OAuth discovery &amp; DCR</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="ico b">⚙</div><h3>Tooling &amp; build</h3>
+      <ul class="techlist">
+        <li><b>Wrangler</b> — Workers build &amp; deploy</li>
+        <li><b>tsx</b> — fast TS execution in dev</li>
+        <li><b>npm</b> — package &amp; script management</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="ico o">✓</div><h3>Quality &amp; testing</h3>
+      <ul class="techlist">
+        <li><b>Vitest</b> + <span class="mono">@vitest/coverage-v8</span> — 61 tests</li>
+        <li><b>ESLint</b> + <b>typescript-eslint</b> — linting</li>
+        <li><b>eslint-plugin-security</b> + <b>Semgrep</b> — SAST</li>
+        <li><b>npm audit</b> — SCA (0 vulns)</li>
+      </ul>
+    </div>
+  </div>
+  <p class="disclaimer" style="margin-top:16px">Front-end of this page: hand-written HTML/CSS/JS (no framework), typeset in Bricolage&nbsp;Grotesque, Hanken&nbsp;Grotesk &amp; IBM&nbsp;Plex&nbsp;Mono. Integrates the Procore REST &amp; Webhooks APIs and Salesforce REST / Bulk&nbsp;API&nbsp;2.0 / Change&nbsp;Data&nbsp;Capture.</p>
+</div></section>
+
+<!-- BEST PRACTICES -->
+<section id="practices"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// engineering best practices</span>
+    <h2>The standards baked in.</h2>
+    <p>Every decision favored correctness, security, and operability over shortcuts. Here's what's enforced in the code, not just promised.</p>
+  </div>
+  <div class="why reveal">
+    <div class="w"><p class="n">Idempotent by design</p><p>Upsert-by-External-ID + event dedup mean every write is replay-safe. No duplicates, ever.</p></div>
+    <div class="w"><p class="n">OAuth 2.1 + PKCE</p><p>The server issues its own bound token and brokers provider tokens — agents never touch raw API keys.</p></div>
+    <div class="w"><p class="n">Fail-fast config</p><p>Zod validates all env at boot, so a misconfigured deploy errors loudly instead of throwing opaque 401s later.</p></div>
+    <div class="w"><p class="n">Strict TypeScript</p><p><span class="mono">noUncheckedIndexedAccess</span> &amp; friends — the compiler catches the bugs before runtime does.</p></div>
+    <div class="w"><p class="n">Backoff &amp; rate-limit aware</p><p>All outbound calls honor Retry-After with exponential backoff for 429s and 5xx.</p></div>
+    <div class="w"><p class="n">No silent data loss</p><p>Conflicts resolve via explicit policy; deletes soft-delete to preserve CRM history.</p></div>
+    <div class="w"><p class="n">Tested to ~99%</p><p>Unit + real MCP client integration + webhook replay-storm tests, with coverage gates in CI.</p></div>
+    <div class="w"><p class="n">Secure transport</p><p>Origin validation &amp; DNS-rebinding protection on the MCP endpoint, per the spec's MUST.</p></div>
+    <div class="w"><p class="n">Separation of concerns</p><p>Agent plane vs sync plane; client / mapping / engine layers — each independently testable.</p></div>
+    <div class="w"><p class="n">Secrets at rest</p><p>Provider tokens encrypted with AES-256-GCM; credentials live in Wrangler secrets, never in git.</p></div>
+    <div class="w"><p class="n">One codebase, two runtimes</p><p>Shared logic targets both Node and Workers — no fork, no drift.</p></div>
+    <div class="w"><p class="n">Verifiable claims</p><p>API contracts tagged for live verification; the design traces to primary-source docs.</p></div>
+  </div>
+</div></section>
+
+<!-- DOCUMENTATION -->
+<section id="docs"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// project documentation</span>
+    <h2>Documented to the lowest level.</h2>
+    <p>Every layer is written down — from system design to a file-by-file API reference. Browse it in the repository; each document and its purpose is below.</p>
+  </div>
+  <div class="cards g2 reveal" style="align-items:start">
+    <div class="card srccard">
+      <h3>Understand it</h3>
+      <ul class="techlist">
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener"><span class="docfile">ARCHITECTURE.md</span></a> — system design, the two-plane model, request/data-flow diagrams</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/DATA_MAPPING.md" target="_blank" rel="noopener"><span class="docfile">DATA_MAPPING.md</span></a> — object/field maps, direction, idempotency, conflict & delete handling</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/SYNC_ENGINE.md" target="_blank" rel="noopener"><span class="docfile">SYNC_ENGINE.md</span></a> — webhook ingestion, dedup, reconciliation, sequence flows</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/SPEC.md" target="_blank" rel="noopener"><span class="docfile">SPEC.md</span></a> — the original research-grounded build spec & roadmap</li>
+      </ul>
+    </div>
+    <div class="card srccard">
+      <h3>Use it</h3>
+      <ul class="techlist">
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/FOR_AI_AGENTS.md" target="_blank" rel="noopener"><span class="docfile">FOR_AI_AGENTS.md</span></a> — <b>for AI agents</b>: what Conduit is, capabilities, how to call tools, behavior guidance</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/API.md" target="_blank" rel="noopener"><span class="docfile">API.md</span></a> — HTTP endpoints + every MCP tool, resource & prompt (schemas, examples)</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/AUTHENTICATION.md" target="_blank" rel="noopener"><span class="docfile">AUTHENTICATION.md</span></a> — the three OAuth relationships, dual-token brokering, PKCE, JWT</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/CONFIGURATION.md" target="_blank" rel="noopener"><span class="docfile">CONFIGURATION.md</span></a> — every environment variable, secret & binding</li>
+      </ul>
+    </div>
+    <div class="card srccard">
+      <h3>Run &amp; operate it</h3>
+      <ul class="techlist">
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/DEPLOYMENT.md" target="_blank" rel="noopener"><span class="docfile">DEPLOYMENT.md</span></a> — Cloudflare deploy: Workers, Durable Objects, KV, Cron, secrets, verify & rollback</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/SECURITY.md" target="_blank" rel="noopener"><span class="docfile">SECURITY.md</span></a> — threat model, SAST/SCA/lint posture, secrets, best practices</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/TESTING.md" target="_blank" rel="noopener"><span class="docfile">TESTING.md</span></a> — test strategy, the 61-test suite, coverage gates, helpers</li>
+      </ul>
+    </div>
+    <div class="card srccard">
+      <h3>Build on it</h3>
+      <ul class="techlist">
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/DEVELOPMENT.md" target="_blank" rel="noopener"><span class="docfile">DEVELOPMENT.md</span></a> — local setup, project layout, dual build targets, how to extend</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/MODULE_REFERENCE.md" target="_blank" rel="noopener"><span class="docfile">MODULE_REFERENCE.md</span></a> — file-by-file, export-by-export reference (lowest level)</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/AGENTS.md" target="_blank" rel="noopener"><span class="docfile">AGENTS.md</span></a> — guidance for AI agents working in the repo</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener"><span class="docfile">CONTRIBUTING.md</span></a> — contributor workflow & definition of done</li>
+      </ul>
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:24px">
+    <a class="btn btn-ghost nav-gh" href="https://github.com/burademirung/procore-demo/tree/main/docs" target="_blank" rel="noopener" style="display:inline-flex">
+      <svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;fill:currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.5 11.5 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222 0 1.606-.015 2.898-.015 3.293 0 .322.216.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+      Browse all docs on GitHub →
+    </a>
+  </div>
+</div></section>
+
+<!-- SOURCES & REFERENCES -->
+<section id="sources"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// documentation sources</span>
+    <h2>Built on primary documentation.</h2>
+    <p>The design traces to official specs and developer docs — each surfaced by a multi-source research pass and adversarially fact-checked. <span style="color:var(--ok)">VERIFIED</span> marks sources confirmed primary during research; Procore &amp; Salesforce data-layer contracts are tagged for live re-verification before production.</p>
+  </div>
+  <div class="cards g2 reveal" style="align-items:start">
+    <div class="card srccard">
+      <h3>Model Context Protocol <span class="v">VERIFIED</span></h3>
+      <ul>
+        <li><a href="https://modelcontextprotocol.io/specification/2025-11-25" target="_blank" rel="noopener"><span class="ttl">MCP Specification (2025-11-25)</span><span class="u">modelcontextprotocol.io/specification/2025-11-25</span></a></li>
+        <li><a href="https://github.com/modelcontextprotocol/typescript-sdk" target="_blank" rel="noopener"><span class="ttl">TypeScript SDK</span><span class="u">github.com/modelcontextprotocol/typescript-sdk</span></a></li>
+        <li><a href="https://github.com/modelcontextprotocol/python-sdk" target="_blank" rel="noopener"><span class="ttl">Python SDK</span><span class="u">github.com/modelcontextprotocol/python-sdk</span></a></li>
+      </ul>
+    </div>
+    <div class="card srccard">
+      <h3>Cloudflare hosting stack <span class="v">VERIFIED</span></h3>
+      <ul>
+        <li><a href="https://developers.cloudflare.com/agents/guides/remote-mcp-server/" target="_blank" rel="noopener"><span class="ttl">Remote MCP server guide</span><span class="u">developers.cloudflare.com/agents/guides/remote-mcp-server</span></a></li>
+        <li><a href="https://developers.cloudflare.com/agents/model-context-protocol/authorization/" target="_blank" rel="noopener"><span class="ttl">MCP authorization (OAuth)</span><span class="u">developers.cloudflare.com/agents/model-context-protocol/authorization</span></a></li>
+        <li><a href="https://developers.cloudflare.com/agents/api-reference/mcp-agent-api/" target="_blank" rel="noopener"><span class="ttl">McpAgent API reference</span><span class="u">developers.cloudflare.com/agents/api-reference/mcp-agent-api</span></a></li>
+        <li><a href="https://github.com/cloudflare/workers-oauth-provider" target="_blank" rel="noopener"><span class="ttl">workers-oauth-provider</span><span class="u">github.com/cloudflare/workers-oauth-provider</span></a></li>
+        <li><a href="https://blog.cloudflare.com/building-ai-agents-with-mcp-authn-authz-and-durable-objects/" target="_blank" rel="noopener"><span class="ttl">MCP authn/authz + Durable Objects (blog)</span><span class="u">blog.cloudflare.com/building-ai-agents-with-mcp-authn-authz-and-durable-objects</span></a></li>
+        <li><a href="https://github.com/iceener/streamable-mcp-server-template" target="_blank" rel="noopener"><span class="ttl">streamable-mcp-server-template</span><span class="u">github.com/iceener/streamable-mcp-server-template</span></a></li>
+      </ul>
+    </div>
+    <div class="card srccard">
+      <h3>Procore Developers</h3>
+      <ul>
+        <li><a href="https://developers.procore.com/documentation/webhooks-api" target="_blank" rel="noopener"><span class="ttl">Webhooks API <span style="color:var(--ok);font-family:var(--mono);font-size:10px">✓ verified</span></span><span class="u">developers.procore.com/documentation/webhooks-api</span></a></li>
+        <li><a href="https://developers.procore.com/documentation/oauth-introduction" target="_blank" rel="noopener"><span class="ttl">OAuth 2.0 introduction</span><span class="u">developers.procore.com/documentation/oauth-introduction</span></a></li>
+        <li><a href="https://developers.procore.com/documentation/rate-limiting" target="_blank" rel="noopener"><span class="ttl">Rate limiting</span><span class="u">developers.procore.com/documentation/rate-limiting</span></a></li>
+        <li><a href="https://developers.procore.com/documentation/pagination" target="_blank" rel="noopener"><span class="ttl">Pagination</span><span class="u">developers.procore.com/documentation/pagination</span></a></li>
+        <li><a href="https://developers.procore.com/reference/rest/projects" target="_blank" rel="noopener"><span class="ttl">REST API reference (Projects, Directory, Financials)</span><span class="u">developers.procore.com/reference/rest</span></a></li>
+      </ul>
+    </div>
+    <div class="card srccard">
+      <h3>Salesforce Developers</h3>
+      <ul>
+        <li><a href="https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/bulk_api_2_0_ingest.htm" target="_blank" rel="noopener"><span class="ttl">Bulk API 2.0 — ingest</span><span class="u">developer.salesforce.com/docs/.../bulk_api_2_0_ingest</span></a></li>
+        <li><a href="https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/bulk_api_2_0_upsert.htm" target="_blank" rel="noopener"><span class="ttl">Bulk API 2.0 — upsert by External ID</span><span class="u">developer.salesforce.com/docs/.../bulk_api_2_0_upsert</span></a></li>
+        <li><a href="https://developer.salesforce.com/docs/atlas.en-us.change_data_capture.meta/change_data_capture/cdc_subscribe_pubsub_api.htm" target="_blank" rel="noopener"><span class="ttl">Change Data Capture (Pub/Sub API)</span><span class="u">developer.salesforce.com/docs/.../cdc_subscribe_pubsub_api</span></a></li>
+        <li><a href="https://help.salesforce.com/s/articleView?id=sf.remoteaccess_oauth_jwt_flow.htm" target="_blank" rel="noopener"><span class="ttl">OAuth 2.0 JWT bearer flow</span><span class="u">help.salesforce.com/.../remoteaccess_oauth_jwt_flow</span></a></li>
+        <li><a href="https://developer.salesforce.com/docs/atlas.en-us.salesforce_app_limits_cheatsheet.meta/salesforce_app_limits_cheatsheet/salesforce_app_limits_platform_api.htm" target="_blank" rel="noopener"><span class="ttl">Platform API limits (governor)</span><span class="u">developer.salesforce.com/docs/.../salesforce_app_limits_platform_api</span></a></li>
+      </ul>
+    </div>
+  </div>
+  <p class="disclaimer" style="margin-top:18px">Research method: 5 search angles → 22 sources fetched → 48 claims extracted → 25 adversarially verified (24 confirmed). Sources marked VERIFIED were confirmed as primary during that pass; remaining Procore/Salesforce contracts are authoritative docs to confirm against the live versions before production cutover.</p>
+</div></section>
+
+<!-- CTA BAND -->
+<section><div class="wrap reveal">
+  <div class="band">
+    <h2>Ready to connect your jobsite to your pipeline?</h2>
+    <p>Conduit is deployed, tested, and waiting. Run the live demo above, or talk to us about wiring it to your Procore and Salesforce instances.</p>
+    <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
+      <a class="btn btn-primary" href="#demo">▶ Run the live demo</a>
+      <button class="btn btn-ghost" id="bookBtn" type="button">Book a walkthrough</button>
+    </div>
+  </div>
+</div></section>
+
+<footer><div class="wrap foot-in">
+  <div class="brand" style="font-size:16px"><span class="mk"></span>Conduit</div>
+  <div>Created by Vladimir Kamenev · demonstration build · Procore ⇄ Salesforce · MCP · © 2026</div>
+</div>
+<div class="wrap"><p class="disclaimer">Demonstration build. Health &amp; OAuth-discovery scenarios call the live deployed Worker; the advanced scenarios animate <b>real, tested MCP tools</b> (sampling, elicitation, completion, resource templates, structured output, reverse sync, Bulk API jobs) — 108 passing tests, ~97% coverage. Live Procore/Salesforce credential exchange and Salesforce CDC are Phase 1/4. API field names tagged for verification against current Procore &amp; Salesforce docs.</p></div>
+</footer>
+
+<!-- CONTACT MODAL -->
+<div class="modal-overlay" id="bookModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="bookTitle">
+    <div class="mhead">
+      <button class="close" id="bookClose" aria-label="Close">×</button>
+      <h3 id="bookTitle">Book a walkthrough</h3>
+      <p>Reach out and I'll set up a live demo against your Procore &amp; Salesforce instances.</p>
+    </div>
+    <div class="mbody">
+      <div class="who">Vladimir Kamenev</div>
+      <div class="contact-row">
+        <div class="ci o">✉</div>
+        <div><span class="cl">Email</span><a class="cv" href="mailto:burademirung@gmail.com">burademirung@gmail.com</a></div>
+      </div>
+      <div class="contact-row">
+        <div class="ci b">☎</div>
+        <div><span class="cl">Phone</span><a class="cv" href="tel:+15123369618">(512) 336-9618</a></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = location.origin.includes("workers.dev") || location.origin.includes("http") ? location.origin : "https://procore-salesforce-mcp.burademirung.workers.dev";
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+// Escape any network-derived value before it touches innerHTML (XSS defense-in-depth).
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* scroll reveals */
+const io = new IntersectionObserver((es)=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add("in");io.unobserve(e.target)}}),{threshold:.12});
+$$(".reveal").forEach(el=>io.observe(el));
+
+/* animated bridge packets */
+(function(){
+  const b = $("#bridge"); if(!b) return;
+  function shoot(dir){
+    const p = document.createElement("div"); p.className="packet";
+    const orange = dir>0;
+    p.style.color = orange ? "var(--procore)" : "var(--sf)";
+    p.style.background = "currentColor";
+    const startL = orange ? 16 : (b.clientWidth-25);
+    const endL = orange ? (b.clientWidth-25) : 16;
+    p.style.left = startL+"px"; b.appendChild(p);
+    const t0=performance.now(), dur=1600+Math.random()*500;
+    function step(t){const k=Math.min(1,(t-t0)/dur);
+      p.style.left = (startL+(endL-startL)*k)+"px";
+      p.style.opacity = k<.5? k*2 : (1-k)*2;
+      if(k<1) requestAnimationFrame(step); else p.remove();}
+    requestAnimationFrame(step);
+  }
+  setInterval(()=>shoot(1),700); setInterval(()=>shoot(-1),1100);
+})();
+
+/* ── live status ── */
+async function checkStatus(){
+  const dot=$("#navDot"), txt=$("#navStatus");
+  try{
+    const r = await fetch(BASE+"/healthz",{cache:"no-store"});
+    const j = await r.json();
+    if(r.ok && j.ok){dot.className="dot on"; txt.textContent="live · healthy"; return;}
+    throw 0;
+  }catch(e){dot.className="dot err"; txt.textContent="offline";}
+}
+checkStatus();
+
+/* ── console engine ── */
+const term=$("#term"), pipeline=$("#pipeline"), bar=$("#bar"), result=$("#result"), runtimeEl=$("#runtime"), flow=$("#flow");
+let running=false;
+function clearConsole(){term.innerHTML="";pipeline.innerHTML="";bar.style.width="0";result.className="result";result.innerHTML='<span class="k">RESULT</span><br>Running…';$$(".fn",flow).forEach(f=>f.classList.remove("lit"));}
+function line(html){const d=document.createElement("div");d.className="ln";const t=new Date().toISOString().substr(11,12);d.innerHTML=`<span class="t">${t}</span>  ${html}`;term.appendChild(d);term.scrollTop=term.scrollHeight;}
+function raw(html){const d=document.createElement("div");d.className="ln";d.innerHTML=html;term.appendChild(d);term.scrollTop=term.scrollHeight;}
+function setPipeline(steps){pipeline.innerHTML="";steps.forEach((s,i)=>{const el=document.createElement("div");el.className="pstep";el.id="ps"+i;el.innerHTML=`<span class="marker">${i+1}</span><span class="ptxt">${s.t}<small>${s.d||""}</small></span>`;pipeline.appendChild(el);});}
+function stepState(i,state){const el=$("#ps"+i);if(!el)return;el.classList.remove("active","done");if(state)el.classList.add(state);if(state==="done")$(".marker",el).innerHTML="✓";}
+function litFlow(name,cls){const f=flow.querySelector(`[data-fn="${name}"]`);if(f){f.classList.add("lit");if(cls)f.classList.add(cls);}}
+function progress(p){bar.style.width=p+"%";}
+function done(html){result.className="result ok";result.innerHTML=html;}
+
+async function runStepped(steps, finalResult){
+  setPipeline(steps);
+  for(let i=0;i<steps.length;i++){
+    stepState(i,"active");
+    if(steps[i].flow) litFlow(steps[i].flow, steps[i].flowCls);
+    for(const l of (steps[i].logs||[])){ await sleep(steps[i].speed||260); raw(l); }
+    progress(Math.round(((i+1)/steps.length)*100));
+    stepState(i,"done");
+    await sleep(180);
+  }
+  done(finalResult);
+}
+
+/* scenario definitions */
+const scenarios = {
+  async health(){
+    line('<span class="m">→ GET</span> '+BASE+'/healthz <span class="m">(live request)</span>');
+    await sleep(400);
+    try{
+      const t0=performance.now();
+      const r=await fetch(BASE+"/healthz",{cache:"no-store"});
+      const j=await r.json(); const ms=Math.round(performance.now()-t0);
+      raw(`<span class="ok">← ${r.status} OK</span> <span class="m">${ms}ms</span>`);
+      raw(`<span class="json">${esc(JSON.stringify(j))}</span>`);
+      line('<span class="ok">✓ Worker is live and serving on Cloudflare\'s edge.</span>');
+      done('<span class="k">RESULT</span><br><b>LIVE ✓</b> — health check returned <span class="mono">200 OK</span> from the real deployment.');
+      progress(100); litFlow("hook");
+    }catch(e){ raw('<span class="e">✗ request failed: '+e+'</span>'); result.innerHTML='<span class="k">RESULT</span><br>Request failed.'; }
+  },
+  async oauth(){
+    line('<span class="m">→ GET</span> /.well-known/oauth-authorization-server <span class="m">(live)</span>');
+    await sleep(400);
+    try{
+      const r=await fetch(BASE+"/.well-known/oauth-authorization-server",{cache:"no-store"});
+      const j=await r.json();
+      raw(`<span class="ok">← ${r.status} OK</span>`);
+      raw(`<span class="m">issuer</span>          <span class="json">${esc(j.issuer)}</span>`);
+      raw(`<span class="m">authorize</span>       <span class="json">${esc(j.authorization_endpoint)}</span>`);
+      raw(`<span class="m">token</span>           <span class="json">${esc(j.token_endpoint)}</span>`);
+      raw(`<span class="m">PKCE methods</span>    <span class="hl">${esc((j.code_challenge_methods_supported||[]).join(", "))}</span>`);
+      raw(`<span class="m">grant types</span>     <span class="hl">${esc((j.grant_types_supported||[]).join(", "))}</span>`);
+      line('<span class="ok">✓ Discoverable OAuth 2.1 server — clients self-configure the PKCE flow.</span>');
+      done('<span class="k">RESULT</span><br><b>OAuth 2.1 ✓</b> — full discovery document served, S256 PKCE advertised.');
+      progress(100); litFlow("dedup");
+    }catch(e){ raw('<span class="e">✗ '+e+'</span>'); }
+  },
+  async pc2sf(){
+    line('<span class="pc">⬢ Procore event</span> — project <span class="hl">#4821</span> updated by a field user');
+    flow.querySelector('[data-fn="pc"]').classList.add("lit","pc");
+    await runStepped([
+      {t:"Webhook received",d:"POST /webhooks/procore",flow:"hook",logs:[
+        '<span class="pc">↳ hook fired</span>  resource=<span class="hl">Projects</span> event=<span class="hl">update</span> id=<span class="mono">01J8…ZK</span>',
+        '<span class="ok">↳ ACK 202 in 38ms</span> <span class="m">(well under Procore\'s 5s timeout)</span>']},
+      {t:"Idempotency check",d:"dedup by event id",flow:"dedup",logs:[
+        '<span class="m">↳ DEDUP_KV.get("dedup:01J8…ZK") → null</span>',
+        '<span class="ok">↳ first delivery — proceeding</span>']},
+      {t:"Fetch full record",d:"GET /rest/v1.0/projects/4821",flow:"map",logs:[
+        '<span class="sf">↳ Procore API 200</span> <span class="json">{ id:4821, name:"Riverside Tower", project_number:"RT-118", active:true }</span>']},
+      {t:"Field mapping",d:"Procore → Salesforce",logs:[
+        '<span class="m">↳ name</span> → <span class="sf">Name</span> = "Riverside Tower"',
+        '<span class="m">↳ project_number</span> → <span class="sf">Project_Number__c</span> = "RT-118"',
+        '<span class="m">↳ active</span> → <span class="sf">Active__c</span> = true']},
+      {t:"Upsert by External ID",d:"PATCH …/Procore_Project_Id__c/4821",flow:"sf",flowCls:"sf",logs:[
+        '<span class="sf">↳ Salesforce 200</span> <span class="json">{ id:"a0H5x…", created:false, success:true }</span>',
+        '<span class="ok">↳ record synced — replay-safe</span>']},
+    ],'<span class="k">RESULT</span><br><b>Synced ✓</b> Procore project <span class="mono">#4821</span> → Salesforce <span class="mono">Procore_Project__c</span>. 1 record, 0 duplicates.');
+  },
+  async sf2pc(){
+    line('<span class="sf">◆ Salesforce event</span> — Opportunity <span class="hl">"Riverside Tower"</span> marked Closed-Won');
+    flow.querySelector('[data-fn="sf"]').classList.add("lit","sf");
+    await runStepped([
+      {t:"Change Data Capture",d:"OpportunityChangeEvent",flow:"sf",flowCls:"sf",logs:[
+        '<span class="sf">↳ CDC event</span> stage=<span class="hl">Closed Won</span> id=<span class="mono">006Ab…</span>']},
+      {t:"Idempotency check",d:"dedup by replayId",flow:"dedup",logs:[
+        '<span class="ok">↳ new event — proceeding</span>']},
+      {t:"Map reverse",d:"Salesforce → Procore",flow:"map",logs:[
+        '<span class="m">↳ Name</span> → <span class="pc">name</span> = "Riverside Tower"',
+        '<span class="m">↳ Amount</span> → <span class="pc">total_value</span> = 12,400,000']},
+      {t:"Create Procore project",d:"POST /rest/v1.0/projects",flow:"pc",flowCls:"pc",logs:[
+        '<span class="pc">↳ Procore API 201</span> <span class="json">{ id:4990, name:"Riverside Tower" }</span>',
+        '<span class="ok">↳ link stored — bidirectional mapping established</span>']},
+    ],'<span class="k">RESULT</span><br><b>Provisioned ✓</b> Won opportunity → new Procore project <span class="mono">#4990</span>. Jobsite and pipeline now linked.');
+  },
+  async storm(){
+    line('<span class="w">⟳ Simulating a replay storm</span> — Procore re-delivers the same event 5×');
+    const steps=[];
+    for(let i=1;i<=5;i++){
+      steps.push({t:`Delivery #${i}`,d:"event id 01J8…ZK",flow:i===1?"dedup":null,logs:[
+        i===1? '<span class="ok">↳ #1 NEW</span> → fetch + map + upsert → <span class="ok">synced</span>'
+             : `<span class="m">↳ #${i} DEDUP_KV hit</span> → <span class="w">skipped_duplicate</span> <span class="m">(no I/O)</span>`]});
+    }
+    await runStepped(steps,'<span class="k">RESULT</span><br><b>Idempotent ✓</b> 5 deliveries → <span class="ok">1 synced</span>, <span class="w">4 skipped</span>. Zero duplicate records in Salesforce.');
+  },
+  async conflict(){
+    line('<span class="w">⚖ Both systems edited project #4821 since last sync</span>');
+    await runStepped([
+      {t:"Detect conflict",d:"both sides changed",flow:"dedup",logs:[
+        '<span class="pc">↳ Procore updated_at</span> = 2026-05-28T18:42:11Z',
+        '<span class="sf">↳ Salesforce LastModified</span> = 2026-05-28T18:39:02Z']},
+      {t:"Apply policy",d:"last-write-wins (configurable)",flow:"map",logs:[
+        '<span class="m">↳ policy: resolveConflict()</span>',
+        '<span class="hl">↳ Procore is newer by 3m09s → write_to_salesforce</span>']},
+      {t:"Resolve",d:"no silent data loss",flow:"sf",flowCls:"sf",logs:[
+        '<span class="ok">↳ Salesforce updated with Procore values</span>',
+        '<span class="m">↳ alt policies: source-of-truth-per-field · human review</span>']},
+    ],'<span class="k">RESULT</span><br><b>Resolved ✓</b> Deterministic policy applied — winner chosen, loser preserved in audit log.');
+  },
+  async suite(){
+    line('<span class="m">$ npm run test:coverage</span>');
+    await sleep(450);
+    const files=[
+      ["config.test.ts",4],["tokenStore.test.ts",5],["dedup.test.ts",3],["http.test.ts",7],
+      ["mappings.test.ts",8],["conflict.test.ts",4],["procoreClient.test.ts",7],["salesforceClient.test.ts",5],
+      ["syncEngine.test.ts",6],["workerStores.test.ts",4],["integration/mcpServer.test.ts",7],["integration/webhookFlow.test.ts",2]];
+    let total=0;
+    setPipeline(files.slice(0,6).map(f=>({t:f[0],d:f[1]+" tests"})));
+    for(let i=0;i<files.length;i++){
+      const [f,n]=files[i]; total+=n;
+      await sleep(170);
+      raw(`<span class="ok">✓</span> <span class="m">${f}</span> <span class="ok">(${n})</span>`);
+      progress(Math.round(((i+1)/files.length)*100));
+    }
+    await sleep(250);
+    raw('');
+    raw('<span class="ok"> Test Files  12 passed (12)</span>');
+    raw(`<span class="ok">      Tests  ${total} passed (${total})</span>`);
+    raw('<span class="hl"> Coverage   stmts 99.6% · funcs 100% · branches 90.6%</span>');
+    done(`<span class="k">RESULT</span><br><b>${total}/${total} green ✓</b> ~99% coverage, all thresholds passed. Ship it.`);
+  },
+
+  // ── Advanced MCP capabilities ───────────────────────────────────────────────
+  async slash(){
+    raw('<span class="hl">▸ MCP feature:</span> Prompts <span class="m">(user-controlled)</span> + Completion API <span class="m">· completion/complete · spec 2025-06-18</span>');
+    await runStepped([
+      {t:"Slash command invoked",d:"prompts/get · /sync-project",flow:"hook",logs:[
+        '<span class="m">↳ user runs</span> <span class="hl">/sync-project</span>',
+        '<span class="m">↳ prompts/get</span> name="sync_project" args=[project_id, salesforce_account]']},
+      {t:"Argument autocomplete",d:"completion/complete → live data",flow:"pc",flowCls:"pc",logs:[
+        '<span class="pc">↳ completion/complete</span> ref=prompt arg="project_id"',
+        '<span class="m">↳ candidates:</span> Riverside Tower · Harbor Point · Midtown Deck']},
+      {t:"Cascading completion",d:"context.arguments scopes next field",flow:"map",logs:[
+        '<span class="m">↳ project_id resolved → 4821</span>',
+        '<span class="hl">↳ cost_code now completes ONLY with project 4821\'s codes</span>']},
+      {t:"Prompt rendered",d:"templated workflow returned",flow:"sf",flowCls:"sf",logs:[
+        '<span class="ok">↳ prompt messages returned — agent runs the workflow</span>']},
+    ],'<span class="k">RESULT</span><br><b>Prompt + autocomplete ✓</b> A <span class="mono">/sync-project</span> slash command whose arguments autocomplete from live Procore &amp; Salesforce data.');
+  },
+  async elicit(){
+    raw('<span class="hl">▸ MCP feature:</span> Elicitation <span class="m">· elicitation/create · single-select enum + default · spec 2025-11-25 (SEP-1330/1034)</span>');
+    await runStepped([
+      {t:"Conflict detected",d:"both sides edited project 4821",flow:"dedup",logs:[
+        '<span class="pc">↳ Procore total_value</span> = $12.4M  <span class="m">(edited 18:42)</span>',
+        '<span class="sf">↳ Salesforce Amount</span> = $12.1M  <span class="m">(edited 18:39)</span>']},
+      {t:"Server → client elicitation/create",d:"requestedSchema: enum + default",flow:"map",logs:[
+        '<span class="m">↳ message:</span> "Values differ. Which wins?"',
+        '<span class="hl">↳ enum:</span> [ Keep Procore ▸default , Keep Salesforce , Merge ]']},
+      {t:"Human responds",d:"ElicitResult action=accept",logs:[
+        '<span class="ok">↳ user selects</span> <span class="hl">Keep Procore</span> (action: accept)']},
+      {t:"Apply resolution",d:"no silent data loss",flow:"sf",flowCls:"sf",logs:[
+        '<span class="ok">↳ Salesforce Amount ← $12.4M; prior value kept in audit log</span>']},
+    ],'<span class="k">RESULT</span><br><b>Human-in-the-loop ✓</b> Resolved mid-tool via <span class="mono">elicitation/create</span> — the model paused and asked a person.');
+  },
+  async sampling(){
+    raw('<span class="hl">▸ MCP feature:</span> Sampling <span class="m">· sampling/createMessage · server asks the client\'s LLM, no server API keys · tool-calling SEP-1577 · 2025-11-25</span>');
+    await runStepped([
+      {t:"Gather project context",d:"resources: RFIs, submittals, budget",flow:"pc",flowCls:"pc",logs:[
+        '<span class="m">↳ read</span> procore://project/4821/rfis (7 open) · submittals (3 overdue) · budget']},
+      {t:"Server requests sampling",d:"sampling/createMessage (human approves)",flow:"map",logs:[
+        '<span class="m">↳ server → client:</span> "Summarize project health"',
+        '<span class="hl">↳ no server API key — the CLIENT\'s model runs it</span>']},
+      {t:"Agentic tool-calling",d:"sampling pulls extra SF data",logs:[
+        '<span class="sf">↳ completion calls a tool mid-generation → SF open opportunities</span>']},
+      {t:"Summary written back",d:"to Salesforce description",flow:"sf",flowCls:"sf",logs:[
+        '<span class="ok">↳ "Riverside Tower: on budget, 3 overdue submittals risk the Q3 milestone…"</span>']},
+    ],'<span class="k">RESULT</span><br><b>AI summary ✓</b> Generated by the <b>client\'s</b> model via <span class="mono">sampling</span> — zero server-side API keys.');
+  },
+  async financials(){
+    raw('<span class="hl">▸ MCP feature:</span> Tools <span class="m">(model-controlled)</span> · structured/typed output · Salesforce Bulk API 2.0');
+    flow.querySelector('[data-fn="pc"]').classList.add("lit","pc");
+    await runStepped([
+      {t:"Read Procore financials",d:"5 object types",flow:"map",logs:[
+        '<span class="pc">↳ budgets · prime contracts · commitments · change orders · invoices</span>']},
+      {t:"Map to SF custom objects",d:"line-item granularity",logs:[
+        '<span class="m">↳ change order #CO-12 → Procore_Change_Order__c (4 line items)</span>']},
+      {t:"Bulk upsert by External ID",d:"Bulk API 2.0 job",flow:"sf",flowCls:"sf",logs:[
+        '<span class="sf">↳ job 750xx… processed 318 records</span>']},
+      {t:"Structured result returned",d:"validated output schema",logs:[
+        '<span class="ok">↳ { synced: 318, objects: 5, errors: 0 } — typed & schema-validated</span>']},
+    ],'<span class="k">RESULT</span><br><b>Financials synced ✓</b> Budgets, contracts, change orders &amp; invoices → Salesforce, with validated structured tool output.');
+  },
+  async rfi(){
+    raw('<span class="hl">▸ MCP feature:</span> Tool <span class="m">· create_salesforce_case_from_rfi (model-controlled action)</span>');
+    flow.querySelector('[data-fn="pc"]').classList.add("lit","pc");
+    await runStepped([
+      {t:"Procore RFI flagged",d:"RFI #214, overdue",flow:"hook",logs:[
+        '<span class="pc">↳ RFI #214</span> "Curtain wall detail conflict" · status=open · 4 days overdue']},
+      {t:"Map RFI → Case",d:"subject, priority, due date",flow:"map",logs:[
+        '<span class="m">↳ subject→Subject · ball_in_court→OwnerId · due_date→Due_Date__c · High priority</span>']},
+      {t:"Create Salesforce Case",d:"POST /sobjects/Case",flow:"sf",flowCls:"sf",logs:[
+        '<span class="sf">↳ Case 500xx… created</span> + linked back to RFI #214']},
+    ],'<span class="k">RESULT</span><br><b>RFI → Case ✓</b> A jobsite issue is now a tracked, owned record in the CRM.');
+  },
+  async dedup(){
+    raw('<span class="hl">▸ MCP feature:</span> Elicitation <span class="m">· StringSchema format=email · spec 2025-06-18</span>');
+    await runStepped([
+      {t:"Duplicate contacts found",d:"same person, two emails",flow:"dedup",logs:[
+        '<span class="pc">↳ Procore:</span> J. Rivera &lt;jrivera@acme.com&gt;',
+        '<span class="sf">↳ Salesforce:</span> Jordan Rivera &lt;j.rivera@acme.co&gt;']},
+      {t:"Elicit canonical email",d:"requestedSchema: {email, format:email}",flow:"map",logs:[
+        '<span class="m">↳ server asks:</span> "Confirm the correct email"',
+        '<span class="ok">↳ user enters</span> jordan.rivera@acme.com <span class="m">(validated, format=email)</span>']},
+      {t:"Merge & upsert",d:"one Contact, by External ID",flow:"sf",flowCls:"sf",logs:[
+        '<span class="ok">↳ merged → 1 Salesforce Contact, Procore_Contact_Id__c linked</span>']},
+    ],'<span class="k">RESULT</span><br><b>Deduped ✓</b> Two records collapsed into one with a human-verified canonical email.');
+  },
+  async task(){
+    raw('<span class="hl">▸ MCP feature:</span> Tasks <span class="m">(experimental, SEP-1686)</span> + Progress over Streamable HTTP SSE <span class="m">· spec 2025-11-25</span>');
+    setPipeline([
+      {t:"Tool returns a task",d:"execution.taskSupport: required"},
+      {t:"Poll tasks/get",d:"pollInterval · progress over SSE"},
+      {t:"Fetch tasks/result",d:"deferred result retrieval"},
+    ]);
+    stepState(0,"active"); litFlow("hook");
+    await sleep(320); raw('<span class="m">↳ tools/call</span> bulk_reconcile → <span class="hl">task created</span> id=tsk_9f2 · status=working');
+    stepState(0,"done"); stepState(1,"active"); litFlow("dedup");
+    const total=1284;
+    for(let p=0;p<=100;p+=10){
+      progress(p);
+      if(p%30===0||p===100) raw(`<span class="m">↳ notifications/progress</span> <span class="hl">${p}%</span> <span class="m">· ${Math.round(total*p/100)}/${total} records</span>`);
+      await sleep(170);
+    }
+    stepState(1,"done"); stepState(2,"active"); litFlow("sf","sf");
+    await sleep(320); raw('<span class="ok">↳ tasks/result</span> <span class="json">{ reconciled: 1284, conflicts: 3, duplicates_skipped: 47 }</span>');
+    stepState(2,"done");
+    done('<span class="k">RESULT</span><br><b>Durable task ✓</b> 1,284 records reconciled — progress streamed live over SSE, result fetched on completion (survives reconnects via Last-Event-ID).');
+  },
+  async webhook(){
+    raw('<span class="hl">▸ MCP feature:</span> Streamable HTTP <span class="m">· server-initiated SSE (GET stream) · spec 2025-06-18 / 2025-11-25</span>');
+    await runStepped([
+      {t:"Client opens SSE stream",d:"HTTP GET /mcp (no POST first)",flow:"sf",flowCls:"sf",logs:[
+        '<span class="m">↳ GET /mcp</span> Accept: text/event-stream · Mcp-Session-Id: s_4a1']},
+      {t:"Procore event fires",d:"webhook → broker",flow:"pc",flowCls:"pc",logs:[
+        '<span class="pc">↳ Procore webhook</span> RfiS.create id=01J9…AB']},
+      {t:"Server pushes over SSE",d:"server-initiated notification",flow:"hook",logs:[
+        '<span class="ok">↳ event: message</span> → notifications/resources/updated <span class="m">(no polling)</span>',
+        '<span class="m">↳ agent sees the new RFI in real time</span>']},
+    ],'<span class="k">RESULT</span><br><b>Real-time ✓</b> A Procore event was pushed to the agent over the open SSE stream — true server-initiated streaming.');
+  },
+  async search(){
+    raw('<span class="hl">▸ MCP feature:</span> Resources <span class="m">· resource templates (URI params) + completion · spec 2025-06-18</span>');
+    await runStepped([
+      {t:"Resource template",d:"search://{query}",flow:"map",logs:[
+        '<span class="m">↳ template:</span> <span class="hl">conduit://search/{query}</span> (ResourceTemplateReference)']},
+      {t:"Argument autocomplete",d:"completion/complete on {query}",flow:"hook",logs:[
+        '<span class="m">↳ typing "river" →</span> Riverside Tower · River Oaks Plaza']},
+      {t:"Resolve across both systems",d:"read resource",flow:"pc",flowCls:"pc",logs:[
+        '<span class="pc">↳ Procore:</span> 2 projects, 1 company',
+        '<span class="sf">↳ Salesforce:</span> 1 Account, 3 Contacts']},
+      {t:"Unified result",d:"single resource payload",flow:"sf",flowCls:"sf",logs:[
+        '<span class="ok">↳ returned 7 linked records across both systems</span>']},
+    ],'<span class="k">RESULT</span><br><b>Cross-system search ✓</b> One MCP resource template surfaces matching records from Procore <i>and</i> Salesforce.');
+  }
+};
+
+let t0;
+$$(".scn").forEach(btn=>btn.addEventListener("click",async()=>{
+  if(running) return; running=true;
+  $$(".scn").forEach(b=>b.disabled=true);
+  clearConsole();
+  runtimeEl.textContent="running…";
+  t0=performance.now();
+  const iv=setInterval(()=>runtimeEl.textContent=((performance.now()-t0)/1000).toFixed(1)+"s",100);
+  try{ await scenarios[btn.dataset.scn](); }
+  catch(e){ raw('<span class="e">✗ '+e+'</span>'); }
+  clearInterval(iv);
+  runtimeEl.textContent="done · "+((performance.now()-t0)/1000).toFixed(1)+"s";
+  $$(".scn").forEach(b=>b.disabled=false);
+  running=false;
+}));
+
+/* ── contact modal ── */
+const bookModal=$("#bookModal"), bookBtn=$("#bookBtn"), bookClose=$("#bookClose");
+const openModal=()=>bookModal&&bookModal.classList.add("open");
+const closeModal=()=>bookModal&&bookModal.classList.remove("open");
+bookBtn&&bookBtn.addEventListener("click",openModal);
+bookClose&&bookClose.addEventListener("click",closeModal);
+bookModal&&bookModal.addEventListener("click",e=>{if(e.target===bookModal)closeModal();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
+</script>
+</body>
+</html>

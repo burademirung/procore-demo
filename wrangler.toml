@@ -1,0 +1,51 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "procore-salesforce-mcp"
+main = "src/worker/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ── Static assets: the GUI demo + docs landing page (public/index.html). ───────
+# Requests that don't match a file fall through to the Worker (API routes below).
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Deploy under the burademirung@gmail.com Cloudflare account.
+account_id = "ced304dad442b3fa3120adaa0ce899a8"
+
+# ── Durable Objects: one instance per MCP session (McpAgent) [VERIFIED pattern] ──
+[[durable_objects.bindings]]
+name = "MCP_OBJECT"
+class_name = "ProcoreSalesforceMCP"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ProcoreSalesforceMCP"]
+
+# ── KV: OAuth grant/token storage + webhook dedup ──────────────────────────────
+# Create with:
+#   wrangler kv namespace create OAUTH_KV
+#   wrangler kv namespace create DEDUP_KV
+# then paste the returned ids below.
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "123c18a4566e4908b8ab9556a9940a58"
+
+[[kv_namespaces]]
+binding = "DEDUP_KV"
+id = "ee433cd6f04b45bb94efe3b1e62abcc7"
+
+# ── Cron: reconciliation backstop (spec §5) ────────────────────────────────────
+[triggers]
+crons = ["*/30 * * * *"]  # every 30 min delta sweep
+
+# Non-secret vars. Secrets (client secrets, JWT key) go via `wrangler secret put`.
+[vars]
+PROCORE_AUTH_BASE = "https://login.procore.com"
+PROCORE_API_BASE = "https://api.procore.com"
+SF_LOGIN_URL = "https://login.salesforce.com"
+SF_API_VERSION = "v62.0"
+MCP_ALLOWED_ORIGINS = "https://claude.ai,https://localhost"
+
+[observability]
+enabled = true

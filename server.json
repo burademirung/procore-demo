@@ -1,0 +1,23 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/server.json",
+  "name": "io.github.burademirung/procore-salesforce-mcp",
+  "description": "Bidirectional Procore <-> Salesforce broker exposed as a Model Context Protocol server.",
+  "version": "0.2.0",
+  "repository": {
+    "url": "https://github.com/burademirung/procore-demo",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://procore-salesforce-mcp.burademirung.workers.dev/mcp"
+    }
+  ],
+  "capabilities": {
+    "tools": true,
+    "resources": { "subscribe": true, "listChanged": true },
+    "prompts": true,
+    "completions": true,
+    "logging": true
+  }
+}
