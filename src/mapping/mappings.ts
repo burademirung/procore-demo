@@ -73,6 +73,70 @@ export const MAPPINGS: ObjectMapping[] = [
       { procore: "business_phone", salesforce: "Phone" },
     ],
   },
+  // ── LEGAL DOCUMENTS (featured vertical) ──────────────────────────────────────
+  // The contracts, certificates, waivers and compliance records that govern a job.
+  // These flow Procore → Salesforce so the CRM/legal team has a live, queryable record
+  // of every executed agreement and its status — the headline capability of this server.
+  // Mirrors the financial-documents vertical: each is a project-scoped Procore collection
+  // upserted into a Salesforce custom object, anchored by the Procore record id.
+  //
+  // [NEEDS LIVE VERIFICATION] — the Procore resource names below (ContractDocuments,
+  // InsuranceCertificates, LienWaivers, ComplianceDocuments → segments contract_documents,
+  // insurance_certificates, lien_waivers, compliance_documents) and their field names are
+  // PROPOSALS, not confirmed Procore REST contracts. The sync logic is real and tested, but
+  // these endpoints will 404 against a live Procore tenant until the exact resource paths and
+  // fields are confirmed against the Procore API, and the matching Salesforce custom objects
+  // (Procore_*__c with a Procore_Id__c External Id) are created in the target org.
+  {
+    key: "contract_document",
+    procoreResource: "ContractDocuments",
+    salesforceObject: "Procore_Contract_Document__c",
+    sfExternalIdField: "Procore_Id__c",
+    direction: "procore_to_sf",
+    fields: [
+      { procore: "title", salesforce: "Name" },
+      { procore: "status", salesforce: "Status__c" },
+      { procore: "contract_type", salesforce: "Type__c" },
+      { procore: "executed_date", salesforce: "Executed_Date__c" },
+    ],
+  },
+  {
+    key: "insurance_certificate",
+    procoreResource: "InsuranceCertificates",
+    salesforceObject: "Procore_Insurance_Certificate__c",
+    sfExternalIdField: "Procore_Id__c",
+    direction: "procore_to_sf",
+    fields: [
+      { procore: "certificate_number", salesforce: "Name" },
+      { procore: "status", salesforce: "Status__c" },
+      { procore: "expiration_date", salesforce: "Expiration_Date__c" },
+    ],
+  },
+  {
+    key: "lien_waiver",
+    procoreResource: "LienWaivers",
+    salesforceObject: "Procore_Lien_Waiver__c",
+    sfExternalIdField: "Procore_Id__c",
+    direction: "procore_to_sf",
+    fields: [
+      { procore: "title", salesforce: "Name" },
+      { procore: "status", salesforce: "Status__c" },
+      { procore: "amount", salesforce: "Amount__c" },
+    ],
+  },
+  {
+    key: "compliance_document",
+    procoreResource: "ComplianceDocuments",
+    salesforceObject: "Procore_Compliance_Document__c",
+    sfExternalIdField: "Procore_Id__c",
+    direction: "procore_to_sf",
+    fields: [
+      { procore: "title", salesforce: "Name" },
+      { procore: "status", salesforce: "Status__c" },
+      { procore: "due_date", salesforce: "Due_Date__c" },
+    ],
+  },
+  // ── FINANCIAL DOCUMENTS ──────────────────────────────────────────────────────
   {
     key: "prime_contract",
     procoreResource: "PrimeContracts",
@@ -146,6 +210,18 @@ export const MAPPINGS: ObjectMapping[] = [
     ],
   },
 ];
+
+/**
+ * Legal-document mappings that flow Procore → Salesforce (used by the legal-documents sync tool).
+ * This is the featured vertical: contracts, insurance certificates, lien waivers and compliance
+ * records — the documents legal/CRM teams most need mirrored into Salesforce.
+ */
+export const LEGAL_MAPPING_KEYS = [
+  "contract_document",
+  "insurance_certificate",
+  "lien_waiver",
+  "compliance_document",
+] as const;
 
 /** Mappings whose financials flow Procore → Salesforce (used by the financials sync tool). */
 export const FINANCIAL_MAPPING_KEYS = ["prime_contract", "commitment", "change_order", "invoice"] as const;

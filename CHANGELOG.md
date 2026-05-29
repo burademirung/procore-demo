@@ -3,6 +3,31 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [0.4.0] — 2026-05-28 — ★ Legal documents (featured vertical)
+
+### Added — legal-documents exchange (the headline capability)
+- **`sync_project_legal_documents`** tool (registered first) — upserts a project's **contracts,
+  insurance certificates, lien waivers and compliance records** into Salesforce custom objects by
+  External ID; typed `{ synced, byObject }` output; honors `AbortSignal`.
+- **`LEGAL_MAPPING_KEYS`** + four mappings (`contract_document`, `insurance_certificate`,
+  `lien_waiver`, `compliance_document` → `Procore_*__c` custom objects, `Procore_Id__c`).
+- **`SyncEngine.syncLegalDocuments(projectId, signal?)`** — shares the new private
+  `syncProjectVertical()` driver with `syncFinancials`, so the two verticals stay identical.
+- Engine `RESOURCE_SEGMENT` / `PROJECT_SCOPED` extended with the four legal resources.
+- **Tests** — legal-document parity tests (mappings, engine bulk-upsert / zero-skip / abort,
+  integration tool list + bulk-sync). Suite grows 137 → **143** passing.
+- **Demo page & docs** — legal documents featured first: hero, a ★ featured demo scenario, a
+  full-width "Legal documents" tool card leading the catalog, top of the mapping table, and
+  threaded through SPEC, API, DATA_MAPPING, MCP_CAPABILITIES, FOR_AI_AGENTS & MODULE_REFERENCE.
+- **Documented next layer** — syncing the underlying binary file (PDF/DOCX) into Salesforce Files
+  (`ContentVersion`/`ContentDocumentLink`); see SPEC §4.
+
+> **`[NEEDS LIVE VERIFICATION]`** — the legal-document **Procore resource names** (`ContractDocuments`,
+> `InsuranceCertificates`, `LienWaivers`, `ComplianceDocuments`) and **field names** are proposals, not
+> confirmed Procore API contracts. The code/tests are real, but these endpoints must be verified against
+> the live Procore API (and the matching Salesforce `Procore_*__c` custom objects created) before they
+> work against a real tenant. Same status as the rest of the Phase-0 mapping registry.
+
 ## [0.3.0] — 2026-05-28 — Broader MCP surface + third-review hardening
 
 ### Added — MCP capabilities (closing declared-but-unused gaps)

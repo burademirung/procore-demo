@@ -15,6 +15,9 @@ interface ObjectMapping {
 ```
 
 ## Direction rationale
+- **Legal documents** (contracts, insurance certificates, lien waivers, compliance records) →
+  **Procore → Salesforce** — the **featured vertical**, giving legal & CRM teams a live, queryable
+  mirror of every executed agreement and its status. Synced by `sync_project_legal_documents`.
 - **Master data** (companies, projects, contacts) → **bidirectional**.
 - **Financials & project-management records** (contracts, change orders, RFIs, submittals) →
   **Procore → Salesforce** (Salesforce is rarely the source of truth for construction financials).
@@ -25,11 +28,21 @@ interface ObjectMapping {
 | `company` | `Companies` | ⇄ bidirectional | `Account` | `Procore_Company_Id__c` |
 | `project` | `Projects` | ⇄ bidirectional | `Procore_Project__c` | `Procore_Project_Id__c` |
 | `contact` | `Users` | ⇄ bidirectional | `Contact` | `Procore_Contact_Id__c` |
+| **`contract_document`** ★ | `ContractDocuments` | → to SF | `Procore_Contract_Document__c` | `Procore_Id__c` |
+| **`insurance_certificate`** ★ | `InsuranceCertificates` | → to SF | `Procore_Insurance_Certificate__c` | `Procore_Id__c` |
+| **`lien_waiver`** ★ | `LienWaivers` | → to SF | `Procore_Lien_Waiver__c` | `Procore_Id__c` |
+| **`compliance_document`** ★ | `ComplianceDocuments` | → to SF | `Procore_Compliance_Document__c` | `Procore_Id__c` |
 | `prime_contract` | `PrimeContracts` | → to SF | `Procore_Prime_Contract__c` | `Procore_Id__c` |
 | `rfi` | `RfiS` | → to SF | `Procore_RFI__c` | `Procore_Id__c` |
 
-Additional objects (commitments, change orders, invoices, submittals, budget line items) are
-described in [`../SPEC.md`](../SPEC.md) §4 and added the same way.
+★ = the featured **legal-documents** vertical (`LEGAL_MAPPING_KEYS`). Additional objects
+(commitments, change orders, invoices, submittals, budget line items) are described in
+[`../SPEC.md`](../SPEC.md) §4 and added the same way.
+
+> **Document content (files).** This vertical syncs the **structured record + metadata** of each
+> legal document (status, type, dates, amount), at the same level as the financial vertical. Syncing
+> the underlying **binary file** (PDF/DOCX) into Salesforce Files (`ContentVersion` /
+> `ContentDocumentLink`) is the documented next layer — see [`../SPEC.md`](../SPEC.md) §4.
 
 ## Field transforms
 - `procoreToSalesforce(mapping, record)` → SF field bag.

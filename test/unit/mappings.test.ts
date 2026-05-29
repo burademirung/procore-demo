@@ -5,6 +5,7 @@ import {
   mappingForProcoreResource,
   procoreToSalesforce,
   salesforceToProcore,
+  LEGAL_MAPPING_KEYS,
   type ObjectMapping,
 } from "../../src/mapping/mappings.js";
 
@@ -17,6 +18,18 @@ describe("mapping registry lookups", () => {
   it("returns undefined for unknown lookups", () => {
     expect(mappingByKey("nope")).toBeUndefined();
     expect(mappingForProcoreResource("Nope")).toBeUndefined();
+  });
+
+  it("includes every legal-document object (the featured vertical) with a custom SF object", () => {
+    for (const key of LEGAL_MAPPING_KEYS) {
+      const m = mappingByKey(key);
+      expect(m, `mapping ${key}`).toBeDefined();
+      expect(m!.direction).toBe("procore_to_sf");
+      expect(m!.salesforceObject).toMatch(/__c$/);
+      expect(m!.sfExternalIdField).toBe("Procore_Id__c");
+    }
+    expect(mappingForProcoreResource("ContractDocuments")?.salesforceObject).toBe("Procore_Contract_Document__c");
+    expect(mappingForProcoreResource("InsuranceCertificates")?.salesforceObject).toBe("Procore_Insurance_Certificate__c");
   });
 
   it("includes the financial & PM objects used by the advanced scenarios", () => {

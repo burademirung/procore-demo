@@ -4,14 +4,15 @@ main = "src/worker/index.ts"
 compatibility_date = "2025-05-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Deploy under the burademirung@gmail.com Cloudflare account.
+# (Top-level key — must NOT live inside a [table], or Wrangler ignores it.)
+account_id = "ced304dad442b3fa3120adaa0ce899a8"
+
 # ── Static assets: the GUI demo + docs landing page (public/index.html). ───────
 # Requests that don't match a file fall through to the Worker (API routes below).
 [assets]
 directory = "./public"
 binding = "ASSETS"
-
-# Deploy under the burademirung@gmail.com Cloudflare account.
-account_id = "ced304dad442b3fa3120adaa0ce899a8"
 
 # ── Durable Objects: one instance per MCP session (McpAgent) [VERIFIED pattern] ──
 [[durable_objects.bindings]]

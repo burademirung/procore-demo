@@ -102,6 +102,10 @@ stores the result in the grant `props` — one grant carries **both** Procore an
 | Company (Vendor/Directory) | ⇄ | Account | SF External ID `Procore_Company_Id__c` | Vendors & owners → Accounts |
 | Project | ⇄ | Opportunity *(or custom `Procore_Project__c`)* | `Procore_Project_Id__c` | Won Opp → new Procore project (SF→PC) |
 | Directory Contact / User | ⇄ | Contact | `Procore_Contact_Id__c` + email | Dedup by email to avoid SF duplicates |
+| **★ Contract Document** | → | custom `Procore_Contract_Document__c` | `Procore_Id__c` | **Featured legal vertical** — status/type/executed date |
+| **★ Insurance Certificate** | → | custom `Procore_Insurance_Certificate__c` | `Procore_Id__c` | COI number, status, expiration date |
+| **★ Lien Waiver** | → | custom `Procore_Lien_Waiver__c` | `Procore_Id__c` | Title, status, amount |
+| **★ Compliance Document** | → | custom `Procore_Compliance_Document__c` | `Procore_Id__c` | Title, status, due date |
 | Prime Contract | → | custom `Procore_Prime_Contract__c` | `Procore_Id__c` | Financials usually PC→SF (reporting) |
 | Commitment / Sub Contract | → | custom `Procore_Commitment__c` | `Procore_Id__c` | |
 | Change Order | → | custom `Procore_Change_Order__c` | `Procore_Id__c` | Line-item granularity = child records |
@@ -111,9 +115,18 @@ stores the result in the grant `props` — one grant carries **both** Procore an
 | Submittal | → | custom `Procore_Submittal__c` | `Procore_Id__c` | |
 | Document | → | Salesforce Files / ContentDocument | `Procore_Id__c` | Store link, not blob, by default |
 
-**Direction rationale:** master data (companies/projects/contacts) is **bidirectional**; financials &
-PM objects (contracts, ROs, RFIs, submittals, docs) are **Procore → Salesforce** (CRM reporting),
-since Salesforce is rarely the source of truth for construction financials.
+**Direction rationale:** master data (companies/projects/contacts) is **bidirectional**; the
+**featured legal-documents vertical** (contracts, insurance certificates, lien waivers, compliance
+records) and financials & PM objects are **Procore → Salesforce** (CRM reporting), since Salesforce
+is rarely the source of truth for construction documents/financials.
+
+> **★ Legal documents (featured).** `sync_project_legal_documents` upserts the four legal-document
+> object types above by External ID — the headline capability. Today it syncs the **structured
+> record + metadata** (status, type, dates, amount), exactly at the level of the financial vertical.
+> **Next layer:** sync the underlying **binary file** (PDF/DOCX) into Salesforce Files —
+> upload via `ContentVersion` (base64 `VersionData`), link to the record via `ContentDocumentLink`,
+> retrieve via the `VersionData` blob endpoint. `[NEEDS LIVE VERIFICATION]` exact ContentVersion
+> size/heap limits and the OAuth scopes required for Files. *(Deep-research findings to be folded in.)*
 
 ---
 

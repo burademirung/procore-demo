@@ -7,6 +7,7 @@ import {
   mappingByKey,
   procoreToSalesforce,
   salesforceToProcore,
+  LEGAL_MAPPING_KEYS,
   FINANCIAL_MAPPING_KEYS,
 } from "../mapping/mappings.js";
 import type { AuditLog } from "./audit.js";
@@ -38,6 +39,12 @@ const RESOURCE_SEGMENT: Record<string, string> = {
   Projects: "projects",
   Companies: "companies",
   Users: "users",
+  // Legal documents (featured vertical)
+  ContractDocuments: "contract_documents",
+  InsuranceCertificates: "insurance_certificates",
+  LienWaivers: "lien_waivers",
+  ComplianceDocuments: "compliance_documents",
+  // Financial documents
   PrimeContracts: "prime_contracts",
   Commitments: "commitments",
   ChangeOrders: "change_orders",
@@ -47,7 +54,18 @@ const RESOURCE_SEGMENT: Record<string, string> = {
 };
 
 /** Resources fetched under a project (`/projects/{pid}/{segment}/{id}`) vs. top-level (`/{segment}/{id}`). */
-const PROJECT_SCOPED = new Set(["PrimeContracts", "Commitments", "ChangeOrders", "Invoices", "RfiS", "Submittals"]);
+const PROJECT_SCOPED = new Set([
+  "ContractDocuments",
+  "InsuranceCertificates",
+  "LienWaivers",
+  "ComplianceDocuments",
+  "PrimeContracts",
+  "Commitments",
+  "ChangeOrders",
+  "Invoices",
+  "RfiS",
+  "Submittals",
+]);
 
 /** REST path segment for a mapping's Procore resource. */
 function segmentFor(resourceName: string): string {
@@ -230,14 +248,38 @@ export class SyncEngine {
   }
 
   /**
+   * Sync a project's legal documents (contracts, insurance certificates, lien waivers and
+   * compliance records) into their Salesforce custom objects via External-Id upsert. This is
+   * the featured vertical: it gives the legal/CRM side a live, queryable mirror of every
+   * executed agreement and its status. Returns per-object counts. Same machinery as financials.
+   */
+  async syncLegalDocuments(projectId: string | number, signal?: AbortSignal): Promise<{ synced: number; byObject: Record<string, number> }> {
+    return this.syncProjectVertical(LEGAL_MAPPING_KEYS, projectId, signal);
+  }
+
+  /**
    * Sync a project's financial objects (prime contracts, commitments, change orders, invoices)
    * into their Salesforce custom objects via per-record REST upsert. For high-volume line items,
    * SalesforceClient.bulkUpsertJob (Bulk API 2.0) is the better tool. Returns per-object counts.
    */
   async syncFinancials(projectId: string | number, signal?: AbortSignal): Promise<{ synced: number; byObject: Record<string, number> }> {
+    return this.syncProjectVertical(FINANCIAL_MAPPING_KEYS, projectId, signal);
+  }
+
+  /**
+   * Shared driver for a project-scoped document vertical: for each mapping key, list the Procore
+   * collection under the project, map each record to Salesforce fields, and bulk-upsert by
+   * External Id. Records without an id are skipped (no stable upsert key); an empty collection
+   * skips the Salesforce write entirely. Honors AbortSignal between collections.
+   */
+  private async syncProjectVertical(
+    keys: readonly string[],
+    projectId: string | number,
+    signal?: AbortSignal,
+  ): Promise<{ synced: number; byObject: Record<string, number> }> {
     const byObject: Record<string, number> = {};
     let synced = 0;
-    for (const key of FINANCIAL_MAPPING_KEYS) {
+    for (const key of keys) {
       if (signal?.aborted) break;
       const m = mappingByKey(key);
       if (!m) continue;

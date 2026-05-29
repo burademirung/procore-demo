@@ -76,7 +76,7 @@ describe("MCP advanced capabilities", () => {
   it("advertises the new tools with structured output", async () => {
     const { tools } = await conn.client.listTools();
     const names = tools.map((t) => t.name);
-    for (const n of ["sync_procore_financials", "create_salesforce_case_from_rfi", "dedupe_contacts", "summarize_project", "resolve_sync_conflict"]) {
+    for (const n of ["sync_project_legal_documents", "sync_procore_financials", "create_salesforce_case_from_rfi", "dedupe_contacts", "summarize_project", "resolve_sync_conflict"]) {
       expect(names, n).toContain(n);
     }
   });
@@ -113,6 +113,17 @@ describe("MCP advanced capabilities", () => {
     const sc = (res as { structuredContent?: { duplicateGroups?: number; merges?: Array<{ canonicalEmail: string }> } }).structuredContent;
     expect(sc?.duplicateGroups).toBe(1);
     expect(sc?.merges?.[0]?.canonicalEmail).toBe("jordan.rivera@acme.com");
+  });
+
+  it("TOOL: sync_project_legal_documents bulk-syncs legal documents (featured)", async () => {
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects/7/", responses: { json: [{ id: 1, title: "Prime Agreement", status: "executed", contract_type: "Prime", certificate_number: "COI-9", amount: 5000 }] } },
+      { match: "/sobjects/", responses: { json: { id: "x", success: true } } },
+    ]);
+    const res = await conn.client.callTool({ name: "sync_project_legal_documents", arguments: { projectId: 7 } });
+    const sc = (res as { structuredContent?: { synced?: number; byObject?: Record<string, number> } }).structuredContent;
+    expect(sc?.synced).toBe(4);
+    expect(sc?.byObject?.["Procore_Contract_Document__c"]).toBe(1);
   });
 
   it("TOOL: sync_procore_financials bulk-syncs financial objects", async () => {

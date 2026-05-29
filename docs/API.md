@@ -48,6 +48,16 @@ Provision a Procore webhook using the two-tier hook + triggers model.
 - **Returns (text):** `{ "hookId": <n>, "triggers": <count> }`
 - **Errors:** invalid input returns an MCP result with `isError: true` (validation is in-band, not a throw).
 
+### Featured tool — legal documents (0.4.0)
+| Tool | Input | Output | MCP feature |
+|---|---|---|---|
+| **`sync_project_legal_documents`** ★ | `{ projectId }` | `{ synced, byObject }` | structured output · idempotent upsert |
+
+★ The headline capability. Upserts a project's **contracts, insurance certificates, lien waivers
+and compliance records** into Salesforce custom objects (`Procore_Contract_Document__c`,
+`Procore_Insurance_Certificate__c`, `Procore_Lien_Waiver__c`, `Procore_Compliance_Document__c`) by
+External ID. `byObject` reports the per-object upsert count. Honors `AbortSignal`.
+
 ### Tools added in 0.2.0
 | Tool | Input | Output | MCP feature |
 |---|---|---|---|
@@ -61,7 +71,7 @@ Provision a Procore webhook using the two-tier hook + triggers model.
 | `authorize_salesforce` | `{ scope? }` | `{ action }` | **URL-mode elicitation** (SEP-1036) |
 
 Additional protocol features in use: **logging** (`run_reconciliation` streams `notifications/message`),
-**cancellation** (reconcile/financials honor `AbortSignal`), and **`resources/list_changed`** (fired when a
+**cancellation** (reconcile/legal-docs/financials honor `AbortSignal`), and **`resources/list_changed`** (fired when a
 reverse create introduces a new resource).
 
 All tools carry annotations (`readOnlyHint`/`destructiveHint`/`idempotentHint`). Tools that need

@@ -144,7 +144,10 @@ Boots `loadConfig(process.env)`, in-memory stores, clients, engine, and an HTTP 
 ## `src/sync/engine.ts` — added in 0.2.0
 - **`SyncEngineOptions`** `{ audit?, links?, onSynced? }`; constructor accepts them; **`setNotifier(fn)`**.
 - **`handleSalesforceChange(event)`** — reverse (SF CDC → Procore), CREATE-only.
-- **`syncFinancials(projectId)`**, **`createCaseFromRfi(projectId, rfiId)`**.
+- **`syncLegalDocuments(projectId, signal?)`** ★ (0.4.0) — featured: bulk-upserts the legal-document
+  vertical (`LEGAL_MAPPING_KEYS`) into Salesforce. **`syncFinancials(projectId, signal?)`**,
+  **`createCaseFromRfi(projectId, rfiId)`**. Both `sync*` methods delegate to the private
+  **`syncProjectVertical(keys, projectId, signal?)`** driver, so legal and financial stay identical.
 - Private **`fetchProcoreRecord`** routes events to the correct Procore endpoint by resource scope.
 
 ## `src/clients` — added in 0.2.0

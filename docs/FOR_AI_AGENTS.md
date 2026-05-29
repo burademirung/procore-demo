@@ -10,6 +10,8 @@ single authenticated connection, and it keeps the two systems in **bidirectional
 handle Procore or Salesforce API keys directly — Conduit brokers them for you behind its own token.
 
 Use Conduit when a user asks you to:
+- **sync legal documents** (contracts, insurance certificates, lien waivers, compliance records)
+  from Procore into Salesforce — call **`sync_project_legal_documents`** (the featured tool),
 - reflect a construction **project / company / contact** between Procore and Salesforce,
 - pull Procore **financials, RFIs, or submittals** into the CRM,
 - set up or run a **sync / reconciliation** between the two systems,
@@ -61,7 +63,7 @@ a thrown exception — read the text, correct the arguments, and retry.
   not `run_reconciliation` (which sweeps everything).
 - **Explain side effects:** `create_procore_webhook` changes external configuration — confirm with
   the user before calling it.
-- **Respect scope:** Conduit covers projects, companies, contacts, financials, RFIs, submittals.
+- **Respect scope:** Conduit covers legal documents (contracts, insurance certificates, lien waivers, compliance records), projects, companies, contacts, financials, RFIs, submittals.
   Anything else → say it's not yet mapped.
 
 ## Example interaction

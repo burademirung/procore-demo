@@ -1,7 +1,9 @@
-# Procore ↔ Salesforce MCP Server
+# Procore ↔ Salesforce MCP Server — Legal Documents
 
-A remote **Model Context Protocol (MCP)** server that brokers **bidirectional** data sync
-between [Procore](https://www.procore.com/) (construction management) and Salesforce (CRM).
+A remote **Model Context Protocol (MCP)** server whose **featured capability** is **legal-document
+exchange**: it syncs a project's **contracts, insurance certificates, lien waivers and compliance
+records** from [Procore](https://www.procore.com/) into Salesforce (via `sync_project_legal_documents`),
+and also brokers **bidirectional** sync of projects, financials and contacts between the two systems.
 It exposes agent-callable **tools / resources / prompts** and runs a durable background
 **reconciliation engine** for webhook-driven sync.
 
@@ -32,11 +34,11 @@ Procore webhooks ──▶ /webhooks/procore ──▶ dedup ──▶ sync engi
 | `src/clients/http.ts` | Rate-limit-aware retry/backoff fetch |
 | `src/clients/procore.ts` | Procore API client (auth refresh, pagination, **webhooks two-tier model**) |
 | `src/clients/salesforce.ts` | Salesforce client (SOQL, **upsert-by-External-ID**, bulk) |
-| `src/mapping/mappings.ts` | Bidirectional object/field mapping registry |
+| `src/mapping/mappings.ts` | Object/field mapping registry — incl. **`LEGAL_MAPPING_KEYS`** (★ featured) + `FINANCIAL_MAPPING_KEYS` |
 | `src/sync/conflict.ts` | Conflict-resolution policy (**your business logic** — see TODO) |
 | `src/sync/dedup.ts` | Idempotency store (at-least-once webhook safety) |
 | `src/sync/engine.ts` | Webhook → map → upsert + reconciliation sweep |
-| `src/mcp/server.ts` | MCP tools / resources / prompts |
+| `src/mcp/server.ts` | MCP tools / resources / prompts — **`sync_project_legal_documents`** registered first (★ featured) |
 | `src/node/index.ts` | Node entrypoint (Streamable HTTP + webhook receiver) |
 | `src/worker/` | **Cloudflare Workers entrypoint (primary deploy target)** |
 
@@ -45,7 +47,7 @@ Procore webhooks ──▶ /webhooks/procore ──▶ dedup ──▶ sync engi
 ```bash
 npm install --legacy-peer-deps
 npm run typecheck        # node + worker targets
-npm test                 # 137 tests
+npm test                 # 143 tests
 npm run test:coverage    # enforces 95/95/85/95 thresholds (lines/functions/branches/statements)
 npm run dev              # local Node server on :8788
 ```

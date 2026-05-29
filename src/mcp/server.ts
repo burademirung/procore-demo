@@ -42,7 +42,7 @@ function templateVar(value: string | string[] | undefined): string {
 
 export function buildMcpServer(deps: Deps): McpServer {
   const server = new McpServer(
-    { name: "procore-salesforce-mcp", version: "0.3.0" },
+    { name: "procore-salesforce-mcp", version: "0.4.0" },
     { capabilities: { logging: {}, resources: { subscribe: true, listChanged: true } } },
   );
 
@@ -61,6 +61,22 @@ export function buildMcpServer(deps: Deps): McpServer {
   });
 
   // ── Tools ───────────────────────────────────────────────────────────────────
+
+  // ★ FEATURED — Legal documents. The headline capability: mirror a project's contracts,
+  // insurance certificates, lien waivers and compliance records into Salesforce by External Id.
+  server.registerTool(
+    "sync_project_legal_documents",
+    {
+      title: "Sync legal documents → Salesforce",
+      description:
+        "Upsert a project's legal documents — contracts, insurance certificates, lien waivers and compliance records — into Salesforce custom objects by external id. Gives legal/CRM teams a live, queryable mirror of every executed agreement and its status.",
+      inputSchema: { projectId: z.union([z.string(), z.number()]) },
+      outputSchema: { synced: z.number(), byObject: z.record(z.string(), z.number()) },
+      annotations: { idempotentHint: true, destructiveHint: false, openWorldHint: true },
+    },
+    async ({ projectId }, extra) => ok(await deps.sync.syncLegalDocuments(projectId, extra.signal)),
+  );
+
   server.registerTool(
     "sync_procore_project_to_salesforce",
     {

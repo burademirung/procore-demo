@@ -87,6 +87,68 @@ describe("SyncEngine.reconcileProjects", () => {
   });
 });
 
+describe("SyncEngine.syncLegalDocuments", () => {
+  let mock: ReturnType<typeof installFetchMock>;
+  afterEach(() => mock?.restore());
+
+  it("bulk-upserts each legal-document type into Salesforce", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects/7/", responses: { json: [
+        { id: 1, title: "Prime Agreement", status: "executed", contract_type: "Prime", executed_date: "2026-01-04",
+          certificate_number: "COI-9", expiration_date: "2027-01-01", amount: 5000, due_date: "2026-06-01" },
+        { title: "no-id record — must be skipped" },
+      ] } },
+      { match: "/sobjects/", responses: { json: { id: "x", success: true, created: true } } },
+    ]);
+    const result = await sync.syncLegalDocuments(7);
+    // 4 legal mappings (contract_document, insurance_certificate, lien_waiver, compliance_document), 1 record each
+    expect(result.synced).toBe(4);
+    expect(result.byObject["Procore_Contract_Document__c"]).toBe(1);
+    expect(result.byObject["Procore_Insurance_Certificate__c"]).toBe(1);
+    expect(result.byObject["Procore_Lien_Waiver__c"]).toBe(1);
+    expect(result.byObject["Procore_Compliance_Document__c"]).toBe(1);
+    // each legal collection is fetched from its correct, distinct Procore URL segment
+    expect(mock.callsFor("/projects/7/contract_documents")).toHaveLength(1);
+    expect(mock.callsFor("/projects/7/insurance_certificates")).toHaveLength(1);
+    expect(mock.callsFor("/projects/7/lien_waivers")).toHaveLength(1);
+    expect(mock.callsFor("/projects/7/compliance_documents")).toHaveLength(1);
+  });
+
+  it("aborts mid-loop and returns PARTIAL results (cancellation honored between collections)", async () => {
+    const { sync } = await buildTestStack();
+    const ac = new AbortController();
+    mock = installFetchMock([
+      {
+        match: "/rest/v1.0/projects/7/",
+        // Abort right after the first legal collection is fetched, so the loop breaks before the rest.
+        responses: () => {
+          ac.abort();
+          return { json: [{ id: 1, title: "Prime Agreement", status: "executed" }] };
+        },
+      },
+      { match: "/sobjects/", responses: { json: { id: "x", success: true } } },
+    ]);
+    const result = await sync.syncLegalDocuments(7, ac.signal);
+    // Only the first collection (contract_document) was processed — partial result, not zero, not all four.
+    expect(result.synced).toBe(1);
+    expect(Object.keys(result.byObject)).toEqual(["Procore_Contract_Document__c"]);
+    expect(mock.callsFor("/projects/7/contract_documents")).toHaveLength(1);
+    expect(mock.callsFor("/projects/7/insurance_certificates")).toHaveLength(0); // loop broke first
+  });
+
+  it("reports zero and skips the Salesforce write when a collection has no id'd records", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects/7/", responses: { json: [{ title: "no id" }] } }, // all filtered out
+      { match: "/sobjects/", responses: { json: { id: "x", success: true } } },
+    ]);
+    const result = await sync.syncLegalDocuments(7);
+    expect(result.synced).toBe(0);
+    expect(mock.callsFor("/sobjects/")).toHaveLength(0);
+  });
+});
+
 describe("SyncEngine.syncFinancials", () => {
   let mock: ReturnType<typeof installFetchMock>;
   afterEach(() => mock?.restore());
@@ -310,5 +372,16 @@ describe("SyncEngine cancellation + logging", () => {
     const result = await engine.syncFinancials(7, ac.signal);
     expect(result.synced).toBe(0);
     expect(mock.calls).toHaveLength(0); // never even listed a financial collection
+  });
+
+  it("syncLegalDocuments stops immediately when the signal is aborted", async () => {
+    const { procore, salesforce, dedup } = await buildTestStack();
+    const engine = new SyncEngine(procore, salesforce, dedup);
+    mock = installFetchMock([{ match: "__never__", responses: { json: [] } }]);
+    const ac = new AbortController();
+    ac.abort();
+    const result = await engine.syncLegalDocuments(7, ac.signal);
+    expect(result.synced).toBe(0);
+    expect(mock.calls).toHaveLength(0); // never even listed a legal collection
   });
 });
