@@ -3,6 +3,26 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [0.7.0] — 2026-05-29 — Strong consistency + idempotent reverse-create
+
+Delivered the two highest-leverage production-hardening items from the review/research rounds.
+
+### Added
+- **`SyncStateDO` Durable Object** — strongly-consistent dedup + link/hash state. A single "global"
+  instance serializes the read-modify-write through DO input gates, eliminating the Cloudflare KV
+  TOCTOU (concurrent webhook retries both passing dedup → double-process / double-insert). Pure logic
+  lives in unit-tested `SyncState`; the DO wraps it over `ctx.storage` and prunes dedup markers via an
+  alarm. New `DODedupStore`/`DOLinkStore` adapters; wired into both Worker engine paths; wrangler
+  binding + migration `v2`. *(KV stores retained for reference/tests.)*
+- **Idempotent reverse-create write-back** — `SalesforceChangeEvent` now carries the SF `recordId`;
+  after a reverse CREATE, `SalesforceClient.updateRecord` stamps the new Procore id back onto the
+  Salesforce record, so a later CDC event for it is an idempotent update — never a duplicate Procore
+  record. Best-effort (a failed write-back only logs; the create stands).
+- **Tests** — `SyncState` (dedup/link/prune), DO adapters (fake stub), `updateRecord`, reverse-create
+  write-back (success + failure + link recording). 177 → **187** passing; coverage gates held
+  (branches 85%+). `SyncStateDO` is runtime-only and excluded from coverage like the entrypoints.
+- **GUI/docs** — Status section promotes both items to "live"; SPEC §8a items marked DONE.
+
 ## [0.6.3] — 2026-05-29 — Third review pass: resilience, wiring, honesty (multi-agent + research)
 
 Fixes from five parallel expert reviews (concurrency, silent-failures, type-design, test-quality,

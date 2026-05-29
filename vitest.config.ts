@@ -9,9 +9,10 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html", "lcov"],
       include: ["src/**/*.ts"],
-      // The worker/node entrypoints are I/O bootstrap wiring exercised via integration
-      // and manual runs; the testable logic lives in the modules below.
-      exclude: ["src/node/index.ts", "src/worker/index.ts"],
+      // The worker/node entrypoints and the Durable Object are runtime-only bootstrap/RPC wiring
+      // exercised via the Workers runtime + integration; their testable logic lives in plain modules
+      // (e.g. SyncState is unit-tested; SyncStateDO just wraps it over ctx.storage).
+      exclude: ["src/node/index.ts", "src/worker/index.ts", "src/worker/syncStateDO.ts"],
       thresholds: {
         // Headline metrics gated at 95%+; branches at 85% (much of the remainder is defensive
         // optional-chaining / null-coalescing that can't be meaningfully exercised).

@@ -375,6 +375,60 @@ describe("SyncEngine.handleSalesforceChange (reverse: SF → Procore)", () => {
     expect(body).not.toHaveProperty("project_id"); // project id lives in the URL, never the body
   });
 
+  it("reverse CREATE stamps the new Procore id back onto the SF record (closes the idempotency loop)", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects/7/contract_documents", responses: { json: { id: 9001 } } },
+      { match: "/sobjects/Procore_Contract_Document__c/a06xx", responses: { text: "" } }, // PATCH write-back
+      { match: "/sobjects/", responses: { json: { id: "x", success: true } } },
+    ]);
+    const r = await sync.handleSalesforceChange({
+      id: "leg-c3",
+      sobject: "Procore_Contract_Document__c",
+      changeType: "CREATE",
+      recordId: "a06xx", // the SF record id → enables write-back
+      fields: { Name: "Master Agreement", Procore_Project_Id__c: 7 },
+    });
+    expect(r.status).toBe("synced");
+    const back = mock.callsFor("/sobjects/Procore_Contract_Document__c/a06xx")[0]!;
+    expect(back.method).toBe("PATCH");
+    expect(JSON.parse(back.body!)).toEqual({ Procore_Id__c: "9001" }); // new Procore id stamped onto SF
+  });
+
+  it("reverse CREATE records the Procore↔Salesforce link when a link store is wired", async () => {
+    const { procore, salesforce, dedup } = await buildTestStack();
+    const links = new InMemoryLinkStore();
+    const engine = new SyncEngine(procore, salesforce, dedup, { links });
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects/7/contract_documents", responses: { json: { id: 9001 } } },
+      { match: "/sobjects/Procore_Contract_Document__c/a06zz", responses: { text: "" } },
+    ]);
+    await engine.handleSalesforceChange({
+      id: "leg-c5",
+      sobject: "Procore_Contract_Document__c",
+      changeType: "CREATE",
+      recordId: "a06zz",
+      fields: { Name: "X", Procore_Project_Id__c: 7 },
+    });
+    expect(await links.get("contract_document", "9001")).toMatchObject({ procoreId: "9001", salesforceId: "a06zz" });
+  });
+
+  it("reverse CREATE still succeeds when the id write-back fails (best-effort, only logs)", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects/7/contract_documents", responses: { json: { id: 9001 } } },
+      { match: "/sobjects/Procore_Contract_Document__c/a06yy", responses: { status: 400, text: "FLS denied" } }, // write-back fails
+    ]);
+    const r = await sync.handleSalesforceChange({
+      id: "leg-c4",
+      sobject: "Procore_Contract_Document__c",
+      changeType: "CREATE",
+      recordId: "a06yy",
+      fields: { Name: "X", Procore_Project_Id__c: 7 },
+    });
+    expect(r.status).toBe("synced"); // the Procore create succeeded; a failed write-back must not fail the sync
+  });
+
   it("reverse CREATE that already carries a Procore id is an idempotent UPDATE (never a duplicate)", async () => {
     const { sync } = await buildTestStack();
     mock = installFetchMock([{ match: "/rest/v1.0/projects/7/contract_documents/55", responses: { json: { id: 55 } } }]);

@@ -61,6 +61,13 @@ Rate-limit-aware fetch.
 
 ---
 
+## `src/sync/syncState.ts` — added in 0.7.0
+- **`SyncState`** (implements `DedupStore` + `LinkStore`) — strongly-consistent dedup + link/hash over a
+  `KvStorage` interface (the DO storage subset), so it's runtime-agnostic and unit-tested. `markIfNew`,
+  `get`/`set` (link), `pruneDedup`. Runs inside `SyncStateDO` (`src/worker/syncStateDO.ts`), whose input
+  gates serialize the read-modify-write. `DODedupStore`/`DOLinkStore` (`src/worker/stores.ts`) are the
+  stub adapters the engine uses. *(`SyncStateDO` is runtime-only, excluded from coverage.)*
+
 ## `src/clients/salesforce.ts`
 - **`class SalesforceClient`** — `constructor(cfg: Config, tokens: TokenStore)`.
   - `session()` *(private)* — `{ accessToken, instanceUrl }`; throws if no session.
@@ -71,6 +78,8 @@ Rate-limit-aware fetch.
   - `createRecord(sobject, fields): Promise<{id, success}>`
   - `bulkUpsert(sobject, externalIdField, records[]): Promise<{processed}>` — Phase-0 per-record
     loop; real Bulk API 2.0 job is Phase 3. *(Contracts: `[NEEDS LIVE VERIFICATION]`.)*
+  - **(0.7.0)** `updateRecord(sobject, id, fields)` — PATCH a record by SF Id (used for reverse-create
+    Procore-id write-back; 204/no-body, so no JSON parse).
   - **(0.5.0, Tier 1 — `api` scope)** `uploadContentVersion({title, fileName, data, linkedRecordId?}): Promise<{id, success}>`
     — REST **multipart** blob-insert to `ContentVersion` (practical ~20 MB, buffered in the Worker; SF allows 2 GB), links via `FirstPublishLocationId`;
     sends auth-only headers so `fetch` sets the multipart boundary. `processApproval({actionType, contextId, comments?, nextApproverIds?, processDefinitionNameOrId?})`

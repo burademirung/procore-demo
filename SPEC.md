@@ -221,12 +221,15 @@ A multi-source, adversarially-verified research pass surfaced four conclusions t
 current bidirectional path can be trusted, and what production-grade requires. These are **documented,
 not yet implemented** — the current code is honest Phase-0/dev grade.
 
-1. **Strong-consistency state (dedup + link/hash) must move to Durable Objects.** The dedup and link
-   stores today use Cloudflare KV, which is eventually consistent (≈60s convergence, ~1 write/s/key,
-   no atomic CAS). The `get→write→set` is a real TOCTOU: concurrent webhook retries can both pass
-   dedup and double-process — and a reverse CREATE without a Procore id would then double-insert. The
-   fix is DO-backed, single-threaded storage (input gates serialize the read-modify-write), following
-   Stripe's idempotency-key + cached-result-replay pattern. *(Sources: Cloudflare DO/KV docs; Stripe.)*
+1. **Strong-consistency state (dedup + link/hash) — DONE (0.7.0).** Moved off eventually-consistent KV
+   onto a single `SyncStateDO` Durable Object whose input gates serialize the `get→put` read-modify-
+   write, closing the TOCTOU where concurrent webhook retries could both pass dedup (double-process,
+   and with reverse writes double-insert). `SyncState` is the pure, unit-tested logic; the DO wraps it
+   over `ctx.storage` and prunes dedup markers via an alarm. **Idempotent reverse-create — DONE (0.7.0):**
+   after a reverse CREATE, the new Procore id is written back onto the Salesforce record by its Id, so a
+   later CDC event carries it and is treated as an update, never a duplicate. *Remaining:* a single
+   global DO serializes all tenants — shard per-tenant for throughput. *(Sources: Cloudflare DO/KV docs;
+   Stripe idempotency.)*
 
 2. **Salesforce CDC sends PARTIAL update payloads.** UPDATE change events carry only `changedFields`
    + `LastModifiedDate`, not the full record. Consequences for the reverse path: (a) the echo-skip

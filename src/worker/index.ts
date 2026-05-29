@@ -7,9 +7,12 @@ import { ProcoreClient } from "../clients/procore.js";
 import { SalesforceClient } from "../clients/salesforce.js";
 import { SyncEngine, type ProcoreWebhookEvent } from "../sync/engine.js";
 import { buildMcpServer } from "../mcp/server.js";
-import { PropsTokenStore, KVDedupStore, KVLinkStore, type OAuthProps } from "./stores.js";
+import { PropsTokenStore, DODedupStore, DOLinkStore, type OAuthProps } from "./stores.js";
+import { SyncStateDO } from "./syncStateDO.js";
 import { verifyWebhookSignature } from "../security/webhookSignature.js";
 import { withSecurityHeaders } from "../security/headers.js";
+
+export { SyncStateDO }; // Durable Object class must be exported from the Worker entry (see wrangler.toml)
 
 /**
  * Cloudflare Workers deploy target (PRIMARY) — the architecture the verified research
@@ -22,9 +25,11 @@ export interface Env {
   ASSETS: Fetcher;
   // Durable Object binding backing McpAgent (declared in wrangler.toml).
   MCP_OBJECT: DurableObjectNamespace;
+  // Durable Object holding strongly-consistent sync state (dedup + link/hash).
+  SYNC_STATE: DurableObjectNamespace<SyncStateDO>;
   // KV namespaces.
   OAUTH_KV: KVNamespace; // used by workers-oauth-provider for grants/tokens
-  DEDUP_KV: KVNamespace; // webhook event dedup
+  DEDUP_KV: KVNamespace; // legacy webhook dedup (superseded by SYNC_STATE DO)
   // Secrets / vars (wrangler secret put ...). Mirror of .env.example.
   PROCORE_CLIENT_ID?: string;
   PROCORE_CLIENT_SECRET?: string;
@@ -55,8 +60,9 @@ export class ProcoreSalesforceMCP extends McpAgent<Env, unknown, OAuthProps> {
 
     const cfg = loadConfig(this.env as unknown as Record<string, string | undefined>);
     const tokens = new PropsTokenStore(tenantId, props);
-    const dedup = new KVDedupStore(this.env.DEDUP_KV);
-    const links = new KVLinkStore(this.env.DEDUP_KV);
+    const syncStub = this.env.SYNC_STATE.get(this.env.SYNC_STATE.idFromName("global"));
+    const dedup = new DODedupStore(syncStub);
+    const links = new DOLinkStore(syncStub);
     const procore = new ProcoreClient(cfg, tokens);
     const salesforce = new SalesforceClient(cfg, tokens);
     const sync = new SyncEngine(procore, salesforce, dedup, { links });
@@ -109,11 +115,12 @@ async function handleDefault(req: Request, env: Env, ctx: ExecutionContext): Pro
         (async () => {
           const cfg = loadConfig(env as unknown as Record<string, string | undefined>);
           const tokens = new PropsTokenStore("default", {}); // TODO Phase 1: resolve tenant tokens from KV
+          const syncStub = env.SYNC_STATE.get(env.SYNC_STATE.idFromName("global"));
           const sync = new SyncEngine(
             new ProcoreClient(cfg, tokens),
             new SalesforceClient(cfg, tokens),
-            new KVDedupStore(env.DEDUP_KV),
-            { links: new KVLinkStore(env.DEDUP_KV), log: (level, message, data) => console.log(`[sync:${level}] ${message}`, data ?? "") },
+            new DODedupStore(syncStub),
+            { links: new DOLinkStore(syncStub), log: (level, message, data) => console.log(`[sync:${level}] ${message}`, data ?? "") },
           );
           // Background failure can't be returned to Procore (already ACKed); log with context so it's
           // findable. Durable retry via Cloudflare Queues is the Phase-4 upgrade (see SPEC §5).

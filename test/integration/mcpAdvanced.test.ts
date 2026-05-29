@@ -335,12 +335,17 @@ describe("MCP advanced capabilities", () => {
   });
 
   it("TOOL: sync_salesforce_to_procore applies a reverse change", async () => {
-    mock = installFetchMock([{ match: "/rest/v1.0/projects", responses: { json: { id: 9001 } } }]);
+    mock = installFetchMock([
+      { match: "/sobjects/Procore_Project__c/006x", responses: { text: "" } }, // idempotency write-back PATCH
+      { match: "/rest/v1.0/projects", responses: { json: { id: 9001 } } },
+    ]);
     const r = await conn.client.callTool({
       name: "sync_salesforce_to_procore",
       arguments: { sobject: "Procore_Project__c", changeType: "CREATE", recordId: "006x", fields: { Name: "Won Tower" } },
     });
     expect((r as { structuredContent?: { status?: string } }).structuredContent?.status).toBe("synced");
+    // the new Procore id is stamped back onto the SF record by its Id
+    expect(JSON.parse(mock!.callsFor("/sobjects/Procore_Project__c/006x")[0]!.body!)).toEqual({ Procore_Project_Id__c: "9001" });
   });
 
   it("RESOURCES: reads a Procore project and a Salesforce account by id", async () => {
@@ -422,7 +427,10 @@ describe("MCP advanced capabilities", () => {
     let resolveGot: () => void;
     const got = new Promise<void>((r) => (resolveGot = r));
     conn.client.setNotificationHandler(ResourceListChangedNotificationSchema, async () => resolveGot());
-    mock = installFetchMock([{ match: "/rest/v1.0/projects", responses: { json: { id: 9001 } } }]);
+    mock = installFetchMock([
+      { match: "/sobjects/Procore_Project__c/006", responses: { text: "" } }, // write-back PATCH
+      { match: "/rest/v1.0/projects", responses: { json: { id: 9001 } } },
+    ]);
     await conn.client.callTool({
       name: "sync_salesforce_to_procore",
       arguments: { sobject: "Procore_Project__c", changeType: "CREATE", recordId: "006", fields: { Name: "T" } },

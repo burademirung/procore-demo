@@ -111,6 +111,18 @@ export class SalesforceClient {
   }
 
   /**
+   * Update an existing record by its Salesforce Id (PATCH returns 204/no body). Used to stamp the
+   * new Procore id back onto an SF record after a reverse CREATE, so a later CDC event for the same
+   * record is an idempotent update rather than a duplicate insert.
+   */
+  async updateRecord(sobject: string, id: string, fields: Record<string, unknown>): Promise<void> {
+    const { instanceUrl } = await this.session();
+    const url = `${this.base(instanceUrl)}/sobjects/${enc(sobject)}/${enc(id)}`;
+    const res = await fetchWithRetry(url, { method: "PATCH", headers: await this.headers(), body: JSON.stringify(fields) });
+    if (!res.ok) throw new HttpError(res.status, await res.text(), url);
+  }
+
+  /**
    * Upload a binary document into Salesforce as a ContentVersion (Salesforce Files) and,
    * when `linkedRecordId` is given, link it to that record in one transaction via
    * `FirstPublishLocationId` (works for the standard Contract object and any record that

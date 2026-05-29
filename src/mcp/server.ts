@@ -69,7 +69,7 @@ function soqlLiteral(value: string): string {
 
 export function buildMcpServer(deps: Deps): McpServer {
   const server = new McpServer(
-    { name: "procore-salesforce-mcp", version: "0.6.3" },
+    { name: "procore-salesforce-mcp", version: "0.7.0" },
     { capabilities: { logging: {}, resources: { subscribe: true, listChanged: true } } },
   );
 
@@ -335,6 +335,7 @@ export function buildMcpServer(deps: Deps): McpServer {
           id: `manual-sf-${recordId}-${crypto.randomUUID()}`, // unique per call
           sobject,
           changeType,
+          recordId, // the SF record id — enables reverse-create write-back of the new Procore id
           fields: fields as Record<string, unknown>,
         }),
       ),

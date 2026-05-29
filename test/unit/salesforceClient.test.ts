@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { SalesforceClient } from "../../src/clients/salesforce.js";
 import { InMemoryTokenStore } from "../../src/auth/tokenStore.js";
+import { HttpError } from "../../src/clients/http.js";
 import { testConfig } from "../helpers/fixtures.js";
 import { installFetchMock } from "../helpers/fetchMock.js";
 
@@ -85,6 +86,22 @@ describe("SalesforceClient", () => {
     expect(processed).toBe(2);
     expect(mock.calls).toHaveLength(2);
     expect(JSON.parse(mock.calls[0]!.body!)).toEqual({ Amount__c: 10 }); // __externalId stripped
+  });
+
+  it("updateRecord PATCHes a record by its Salesforce Id", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([{ match: "/sobjects/Contract/800x", responses: { text: "" } }]);
+    await client.updateRecord("Contract", "800x", { Status: "Activated" });
+    const call = mock.calls[0]!;
+    expect(call.method).toBe("PATCH");
+    expect(call.url).toContain("/sobjects/Contract/800x");
+    expect(JSON.parse(call.body!)).toEqual({ Status: "Activated" });
+  });
+
+  it("updateRecord throws HttpError when the PATCH is rejected", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([{ match: "/sobjects/Contract/800x", responses: { status: 400, text: "validation error" } }]);
+    await expect(client.updateRecord("Contract", "800x", { Status: "X" })).rejects.toBeInstanceOf(HttpError);
   });
 
   it("bulkUpsert continues past a failed record and reports the failed count", async () => {

@@ -1,6 +1,7 @@
 import type { TokenStore, Provider, ProviderToken } from "../auth/tokenStore.js";
 import type { DedupStore } from "../sync/dedup.js";
 import type { LinkStore, RecordLink } from "../sync/linkStore.js";
+import type { SyncStateDO } from "./syncStateDO.js";
 
 /**
  * Cloudflare-native store implementations.
@@ -93,5 +94,27 @@ export class KVLinkStore implements LinkStore {
   }
   async set(mappingKey: string, link: RecordLink): Promise<void> {
     await this.kv.put(this.key(mappingKey, link.procoreId), JSON.stringify(link));
+  }
+}
+
+/**
+ * Strongly-consistent dedup + link stores backed by the SyncStateDO Durable Object (preferred over
+ * the KV variants above, which are eventually consistent). Both adapters wrap the SAME DO stub, so
+ * all dedup/link RMW is serialized through one DO — eliminating the KV TOCTOU. See SPEC §8a.
+ */
+export class DODedupStore implements DedupStore {
+  constructor(private readonly stub: DurableObjectStub<SyncStateDO>) {}
+  markIfNew(eventId: string): Promise<boolean> {
+    return this.stub.markIfNew(eventId);
+  }
+}
+
+export class DOLinkStore implements LinkStore {
+  constructor(private readonly stub: DurableObjectStub<SyncStateDO>) {}
+  get(mappingKey: string, procoreId: string): Promise<RecordLink | undefined> {
+    return this.stub.linkGet(mappingKey, procoreId);
+  }
+  set(mappingKey: string, link: RecordLink): Promise<void> {
+    return this.stub.linkSet(mappingKey, link);
   }
 }

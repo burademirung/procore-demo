@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { PropsTokenStore, KVDedupStore, KVLinkStore, type KVLike } from "../../src/worker/stores.js";
+import { PropsTokenStore, KVDedupStore, KVLinkStore, DODedupStore, DOLinkStore, type KVLike } from "../../src/worker/stores.js";
+import type { SyncStateDO } from "../../src/worker/syncStateDO.js";
+import type { RecordLink } from "../../src/sync/linkStore.js";
 
 class FakeKV implements KVLike {
   store = new Map<string, string>();
@@ -67,5 +69,45 @@ describe("KVLinkStore", () => {
     await links.set("lien_waiver", { procoreId: "55", lastHash: "h1" });
     expect(await links.get("contract_document", "55")).toBeUndefined(); // same id, different mapping
     expect((await links.get("lien_waiver", "55"))?.lastHash).toBe("h1");
+  });
+});
+
+describe("DO-backed stores (adapters over the SyncStateDO stub)", () => {
+  // Minimal fake of the DO RPC surface the adapters call.
+  function fakeStub() {
+    const dedup = new Set<string>();
+    const linkMap = new Map<string, RecordLink>();
+    const calls: string[] = [];
+    const stub = {
+      async markIfNew(id: string) {
+        calls.push(`markIfNew:${id}`);
+        if (dedup.has(id)) return false;
+        dedup.add(id);
+        return true;
+      },
+      async linkGet(mk: string, pid: string) {
+        return linkMap.get(`${mk}::${pid}`);
+      },
+      async linkSet(mk: string, link: RecordLink) {
+        linkMap.set(`${mk}::${link.procoreId}`, link);
+      },
+    };
+    return { stub: stub as unknown as DurableObjectStub<SyncStateDO>, calls };
+  }
+
+  it("DODedupStore delegates markIfNew to the DO (dedups via the DO)", async () => {
+    const { stub, calls } = fakeStub();
+    const dedup = new DODedupStore(stub);
+    expect(await dedup.markIfNew("e1")).toBe(true);
+    expect(await dedup.markIfNew("e1")).toBe(false);
+    expect(calls).toEqual(["markIfNew:e1", "markIfNew:e1"]);
+  });
+
+  it("DOLinkStore delegates get/set to the DO", async () => {
+    const { stub } = fakeStub();
+    const links = new DOLinkStore(stub);
+    expect(await links.get("contract_document", "55")).toBeUndefined();
+    await links.set("contract_document", { procoreId: "55", lastHash: "h1" });
+    expect((await links.get("contract_document", "55"))?.lastHash).toBe("h1");
   });
 });

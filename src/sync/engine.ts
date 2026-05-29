@@ -29,9 +29,11 @@ export interface SyncEngineOptions {
 
 /** Salesforce Change Data Capture event (inbound SF → Procore). */
 export interface SalesforceChangeEvent {
-  id: string;
+  id: string; // CDC event id — dedup anchor (NOT the SF record id)
   sobject: string;
   changeType: "CREATE" | "UPDATE" | "DELETE";
+  /** The Salesforce record's own Id. Required to write the new Procore id back after a reverse CREATE. */
+  recordId?: string;
   fields: Record<string, unknown>;
 }
 
@@ -277,8 +279,20 @@ export class SyncEngine {
       const created = projectScoped
         ? await this.procore.createProjectResource(segment, pid, procoreFields)
         : await this.procore.create(segment, procoreFields);
-      this.notify("procore", mapping.procoreResource, String(created.id), "create");
-      return { status: "synced", detail: `${mapping.salesforceObject}→${segment}#${created.id}` };
+      const newId = String(created.id);
+      // Close the idempotency loop: stamp the new Procore id back onto the SF record (by its Id), so
+      // a later CDC event for this record carries the id and is treated as an UPDATE — never a
+      // duplicate insert. Best-effort: the create already succeeded, so a failed stamp-back only logs.
+      if (event.recordId) {
+        await this.salesforce
+          .updateRecord(mapping.salesforceObject, event.recordId, { [mapping.sfExternalIdField]: newId })
+          .catch((e) => this.log("warning", `reverse-create write-back failed for ${mapping.salesforceObject}#${event.recordId}`, { error: e instanceof Error ? e.message : String(e) }));
+      }
+      if (this.opts.links) {
+        await this.opts.links.set(mapping.key, { procoreId: newId, ...(event.recordId ? { salesforceId: event.recordId } : {}) });
+      }
+      this.notify("procore", mapping.procoreResource, newId, "create");
+      return { status: "synced", detail: `${mapping.salesforceObject}→${segment}#${newId}` };
     }
 
     // UPDATE (or a CREATE that already carries a Procore id → idempotent update, never a duplicate).
