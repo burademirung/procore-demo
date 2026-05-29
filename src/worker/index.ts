@@ -69,8 +69,30 @@ export class ProcoreSalesforceMCP extends McpAgent<Env, unknown, OAuthProps> {
  *
  * [VERIFIED] Procore webhooks need a 2xx within 5s → ACK then process via waitUntil.
  */
+/** Security headers applied to every Worker-generated response (assets use public/_headers). */
+const SECURITY_HEADERS: Record<string, string> = {
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "no-referrer",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
+};
+function secure(resp: Response): Response {
+  const headers = new Headers(resp.headers);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) headers.set(k, v);
+  return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers });
+}
+
 const defaultHandler: ExportedHandler<Env> = {
   async fetch(req, env, ctx): Promise<Response> {
+    return secure(await handleDefault(req, env, ctx));
+  },
+};
+
+async function handleDefault(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
     if (url.pathname === "/healthz") {
@@ -110,8 +132,7 @@ const defaultHandler: ExportedHandler<Env> = {
     }
 
     return new Response("not found", { status: 404 });
-  },
-};
+}
 
 /**
  * tokenExchangeCallback — the keystone [VERIFIED]. Runs when the OAuth provider issues/

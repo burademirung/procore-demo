@@ -45,8 +45,8 @@ Procore webhooks ──▶ /webhooks/procore ──▶ dedup ──▶ sync engi
 ```bash
 npm install --legacy-peer-deps
 npm run typecheck        # node + worker targets
-npm test                 # 61 tests
-npm run test:coverage    # enforces 85/85/80/85 thresholds
+npm test                 # 118 tests
+npm run test:coverage    # enforces 95/95/85/95 thresholds (lines/functions/branches/statements)
 npm run dev              # local Node server on :8788
 ```
 

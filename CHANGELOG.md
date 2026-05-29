@@ -33,7 +33,7 @@ All notable changes to this project are documented here. Format loosely follows
 - **Exact Origin matching** (removed `startsWith` prefix bypass); path-param encoding; HTTP-date `Retry-After`.
 
 ### Quality
-- **108 tests**, coverage ~97% statements / ~98% lines / ~85% branches (gated). ESLint + Semgrep + `npm audit` clean.
+- **118 tests**, coverage ~98% statements / ~99% lines / 86% branches (gated at 95/95/85/95). ESLint + Semgrep + `npm audit` clean.
 - CI/CD (GitHub Actions), Dockerfile, example client, `server.json` manifest, issue/PR templates.
 
 ## [0.1.0] — 2026-05-28 — Phase 0 (Foundation)

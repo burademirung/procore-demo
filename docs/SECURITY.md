@@ -7,7 +7,7 @@
 | **SAST** (static analysis) | Semgrep (`p/security-audit`, `p/xss`, `p/secrets`) + `eslint-plugin-security` | **0 findings** |
 | **Lint** | ESLint + `typescript-eslint` | **0 errors** |
 | **Type safety** | `tsc` strict (both targets) | passes |
-| **Tests** | Vitest, ~99% lines | 61 passing |
+| **Tests** | Vitest, ~99% lines | 118 passing |
 
 Run them all:
 ```bash

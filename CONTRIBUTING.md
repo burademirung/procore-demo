@@ -21,7 +21,7 @@ cp .env.example .env             # fill in for local Node runs
 | `npm run typecheck` | Type-check both the Node and Worker targets |
 | `npm run lint` | ESLint (TypeScript + security rules) |
 | `npm test` | Run the Vitest suite |
-| `npm run test:coverage` | Tests with coverage gates (85/85/80/85) |
+| `npm run test:coverage` | Tests with coverage gates (95/95/85/95) |
 | `npm run audit` | `npm audit` for production deps (SCA) |
 
 ## Definition of done (before opening a PR)

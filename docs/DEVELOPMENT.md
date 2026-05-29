@@ -19,7 +19,7 @@ npm run worker:dev               # Worker via wrangler (DO + KV emulated)
 | `npm run typecheck` | Type-check Node **and** Worker targets. |
 | `npm run lint` | ESLint (TypeScript + security). |
 | `npm test` / `test:watch` | Vitest. |
-| `npm run test:coverage` | Vitest with coverage gates (85/85/80/85). |
+| `npm run test:coverage` | Vitest with coverage gates (95/95/85/95). |
 | `npm run audit` | `npm audit` for production deps (SCA). |
 | `npm run worker:deploy` | `wrangler deploy`. |
 
