@@ -29,6 +29,15 @@ describe("resolveConflict (default policy)", () => {
     expect(r.action).toBe("write_to_salesforce");
   });
 
+  it("when only one side has a timestamp, the timestamped side wins (0 = oldest)", () => {
+    const r = resolveConflict({
+      objectKey: "project",
+      procore: { fields: { Name: "P" }, updatedAt: 500 },
+      salesforce: { fields: { Name: "S" } }, // no updatedAt → 0
+    });
+    expect(r.action).toBe("write_to_salesforce"); // procore (500) newer than salesforce (0)
+  });
+
   it("no timestamps → escalate to human review", () => {
     const r = resolveConflict({ objectKey: "project", procore: { fields: {} }, salesforce: { fields: {} } });
     expect(r.action).toBe("needs_human_review");

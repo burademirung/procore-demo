@@ -48,6 +48,7 @@ describe("SyncEngine.handleProcoreWebhook", () => {
     ]);
     const result = await sync.handleProcoreWebhook({ ...baseEvent, id: "evt-del", event_type: "delete" });
     expect(result.status).toBe("deleted");
+    expect(mock.calls[0]!.url).toContain("/Procore_Project_Id__c/42"); // correct external-id field + id
     expect(JSON.parse(mock.calls[0]!.body!)).toEqual({ Procore_Deleted__c: true });
   });
 
@@ -114,11 +115,12 @@ describe("SyncEngine.createCaseFromRfi", () => {
   it("creates a Salesforce Case from a Procore RFI and links them", async () => {
     const { sync } = await buildTestStack();
     mock = installFetchMock([
-      { match: "/rfis/214", responses: { json: { id: 214, subject: "Curtain wall conflict", body: "details" } } },
+      { match: "/rest/v1.0/projects/7/rfis/214", responses: { json: { id: 214, subject: "Curtain wall conflict", body: "details" } } },
       { match: "/sobjects/Case", responses: { json: { id: "500x9", success: true } } },
     ]);
     const result = await sync.createCaseFromRfi(7, 214);
     expect(result).toEqual({ caseId: "500x9", rfiId: "214" });
+    expect(mock.callsFor("/rest/v1.0/projects/7/rfis/214")).toHaveLength(1); // project-scoped, not /rfis/{id}
     const caseCall = mock.callsFor("/sobjects/Case")[0]!;
     expect(JSON.parse(caseCall.body!)).toMatchObject({ Subject: "Curtain wall conflict", Procore_RFI_Id__c: "214" });
   });
@@ -126,7 +128,7 @@ describe("SyncEngine.createCaseFromRfi", () => {
   it("falls back to a generated subject when the RFI has none", async () => {
     const { sync } = await buildTestStack();
     mock = installFetchMock([
-      { match: "/rfis/9", responses: { json: { id: 9 } } },
+      { match: "/rest/v1.0/projects/7/rfis/9", responses: { json: { id: 9 } } },
       { match: "/sobjects/Case", responses: { json: { id: "500c", success: true } } },
     ]);
     await sync.createCaseFromRfi(7, 9);
@@ -209,6 +211,23 @@ describe("SyncEngine.handleSalesforceChange (reverse: SF → Procore)", () => {
     const r = await sync.handleSalesforceChange({ id: "u1", sobject: "Procore_Project__c", changeType: "UPDATE", fields: { Name: "X" } });
     expect(r.status).toBe("ignored");
     expect(mock.calls).toHaveLength(0); // no Procore create call was made
+  });
+
+  it("deduplicates a replay of the SAME real sobject event (not just any prior id)", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([{ match: "/rest/v1.0/projects", responses: { json: { id: 1 } } }]);
+    const ev = { id: "sf-dup-1", sobject: "Procore_Project__c", changeType: "CREATE" as const, fields: { Name: "X" } };
+    expect((await sync.handleSalesforceChange({ ...ev })).status).toBe("synced");
+    expect((await sync.handleSalesforceChange({ ...ev })).status).toBe("skipped_duplicate");
+    expect(mock.calls).toHaveLength(1); // exactly one Procore create
+  });
+
+  it("ignores a reverse DELETE on a bidirectional object (Phase 4 not yet implemented)", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([{ match: "__never__", responses: { json: {} } }]);
+    const r = await sync.handleSalesforceChange({ id: "del-1", sobject: "Procore_Project__c", changeType: "DELETE", fields: {} });
+    expect(r.status).toBe("ignored");
+    expect(mock.calls).toHaveLength(0);
   });
 });
 

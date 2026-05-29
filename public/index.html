@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Conduit — Procore ⇄ Salesforce MCP Bridge</title>
 <meta name="description" content="A live, agent-native Model Context Protocol server brokering bidirectional sync between Procore and Salesforce. Deployed on Cloudflare. Watch it work." />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://procore-salesforce-mcp.burademirung.workers.dev; base-uri 'none'; object-src 'none'" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Hanken+Grotesk:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1038,7 +1039,7 @@ const scenarios = {
       line('<span class="ok">✓ Worker is live and serving on Cloudflare\'s edge.</span>');
       done('<span class="k">RESULT</span><br><b>LIVE ✓</b> — health check returned <span class="mono">200 OK</span> from the real deployment.');
       progress(100); litFlow("hook");
-    }catch(e){ raw('<span class="e">✗ request failed: '+e+'</span>'); result.innerHTML='<span class="k">RESULT</span><br>Request failed.'; }
+    }catch(e){ raw('<span class="e">✗ request failed: '+esc(String(e))+'</span>'); result.innerHTML='<span class="k">RESULT</span><br>Request failed.'; }
   },
   async oauth(){
     line('<span class="m">→ GET</span> /.well-known/oauth-authorization-server <span class="m">(live)</span>');
@@ -1055,7 +1056,7 @@ const scenarios = {
       line('<span class="ok">✓ Discoverable OAuth 2.1 server — clients self-configure the PKCE flow.</span>');
       done('<span class="k">RESULT</span><br><b>OAuth 2.1 ✓</b> — full discovery document served, S256 PKCE advertised.');
       progress(100); litFlow("dedup");
-    }catch(e){ raw('<span class="e">✗ '+e+'</span>'); }
+    }catch(e){ raw('<span class="e">✗ '+esc(String(e))+'</span>'); }
   },
   async pc2sf(){
     line('<span class="pc">⬢ Procore event</span> — project <span class="hl">#4821</span> updated by a field user');
@@ -1284,7 +1285,7 @@ $$(".scn").forEach(btn=>btn.addEventListener("click",async()=>{
   t0=performance.now();
   const iv=setInterval(()=>runtimeEl.textContent=((performance.now()-t0)/1000).toFixed(1)+"s",100);
   try{ await scenarios[btn.dataset.scn](); }
-  catch(e){ raw('<span class="e">✗ '+e+'</span>'); }
+  catch(e){ raw('<span class="e">✗ '+esc(String(e))+'</span>'); }
   clearInterval(iv);
   runtimeEl.textContent="done · "+((performance.now()-t0)/1000).toFixed(1)+"s";
   $$(".scn").forEach(b=>b.disabled=false);

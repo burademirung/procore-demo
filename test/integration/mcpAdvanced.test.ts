@@ -248,4 +248,22 @@ describe("MCP advanced capabilities", () => {
     });
     expect((r as { structuredContent?: { hookId?: number } }).structuredContent?.hookId).toBe(3);
   });
+
+  it("propagates an upstream API failure as an isError tool result", async () => {
+    mock = installFetchMock([{ match: "/rest/v1.0/projects/42", responses: { status: 404, text: "not found" } }]);
+    const r = await conn.client.callTool({ name: "sync_procore_project_to_salesforce", arguments: { projectId: 42 } });
+    expect((r as { isError?: boolean }).isError).toBe(true);
+  });
+
+  it("PROGRESS: run_reconciliation emits progress notifications", async () => {
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects", responses: { json: [{ id: 1, name: "A" }] } },
+      { match: "/sobjects/Procore_Project__c/", responses: { json: { id: "x", success: true } } },
+    ]);
+    const progress: number[] = [];
+    await conn.client.callTool({ name: "run_reconciliation", arguments: { scope: "projects" } }, undefined, {
+      onprogress: (p) => progress.push(p.progress),
+    });
+    expect(progress).toContain(100);
+  });
 });

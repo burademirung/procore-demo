@@ -109,7 +109,7 @@ export function buildMcpServer(deps: Deps): McpServer {
     "sync_procore_financials",
     {
       title: "Sync Procore financials → Salesforce",
-      description: "Bulk-upsert a project's prime contracts, commitments, change orders and invoices into Salesforce.",
+      description: "Upsert a project's prime contracts, commitments, change orders and invoices into Salesforce custom objects.",
       inputSchema: { projectId: z.union([z.string(), z.number()]) },
       outputSchema: { synced: z.number(), byObject: z.record(z.string(), z.number()) },
       annotations: { idempotentHint: true, destructiveHint: false, openWorldHint: true },

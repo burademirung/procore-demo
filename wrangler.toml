@@ -45,7 +45,7 @@ PROCORE_AUTH_BASE = "https://login.procore.com"
 PROCORE_API_BASE = "https://api.procore.com"
 SF_LOGIN_URL = "https://login.salesforce.com"
 SF_API_VERSION = "v62.0"
-MCP_ALLOWED_ORIGINS = "https://claude.ai,https://localhost"
+MCP_ALLOWED_ORIGINS = "https://claude.ai,http://localhost"
 
 [observability]
 enabled = true

@@ -50,6 +50,12 @@ describe("ProcoreClient auth", () => {
     const { client } = await clientWithToken({ accessToken: "x", expiresAt: Date.now() - 1000 } as never);
     await expect(client.listCompanies()).rejects.toThrow(/no refresh token/);
   });
+
+  it("surfaces an error when the refresh-token exchange itself fails (invalid_grant)", async () => {
+    const { client } = await clientWithToken({ accessToken: "old", refreshToken: "r-bad", expiresAt: Date.now() - 1000 } as never);
+    mock = installFetchMock([{ match: "/oauth/token", responses: { status: 401, text: '{"error":"invalid_grant"}' } }]);
+    await expect(client.listCompanies()).rejects.toBeTruthy();
+  });
 });
 
 describe("ProcoreClient resources", () => {

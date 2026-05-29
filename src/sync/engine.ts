@@ -95,14 +95,19 @@ export class SyncEngine {
   }
 
   private notify(system: "procore" | "salesforce", object: string, externalId: string, action: "upsert" | "create" | "soft_delete"): void {
-    this.opts.audit?.record({ action, system, object, externalId, status: "ok" });
+    this.opts.audit?.record({ action, system, object, externalId, status: "ok", at: Date.now() });
     this.notifier?.({ system, object, externalId });
   }
 
   /** Fetch the canonical Procore record for an event, using the right endpoint for its resource. */
   private fetchProcoreRecord(event: ProcoreWebhookEvent, mapping: { procoreResource: string }): Promise<unknown> {
     const segment = segmentFor(mapping.procoreResource);
-    if (PROJECT_SCOPED.has(mapping.procoreResource) && event.project_id !== undefined) {
+    if (PROJECT_SCOPED.has(mapping.procoreResource)) {
+      if (event.project_id === undefined) {
+        // Project-scoped resources can't be fetched without a project id — fail loudly rather
+        // than hit a non-existent top-level endpoint.
+        throw new Error(`Webhook for ${mapping.procoreResource}#${event.resource_id} is missing project_id`);
+      }
       return this.procore.getProjectResource(segment, event.project_id, event.resource_id);
     }
     return this.procore.getById(segment, event.resource_id);
@@ -203,7 +208,8 @@ export class SyncEngine {
 
   /**
    * Sync a project's financial objects (prime contracts, commitments, change orders, invoices)
-   * into their Salesforce custom objects via Bulk upsert. Returns per-object counts.
+   * into their Salesforce custom objects via per-record REST upsert. For high-volume line items,
+   * SalesforceClient.bulkUpsertJob (Bulk API 2.0) is the better tool. Returns per-object counts.
    */
   async syncFinancials(projectId: string | number): Promise<{ synced: number; byObject: Record<string, number> }> {
     const byObject: Record<string, number> = {};

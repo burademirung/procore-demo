@@ -64,7 +64,7 @@ export class SalesforceClient {
     fields: Record<string, unknown>,
   ): Promise<{ id: string; created: boolean; success: boolean }> {
     const { instanceUrl } = await this.session();
-    const url = `${this.base(instanceUrl)}/sobjects/${sobject}/${externalIdField}/${encodeURIComponent(externalId)}`;
+    const url = `${this.base(instanceUrl)}/sobjects/${enc(sobject)}/${enc(externalIdField)}/${enc(externalId)}`;
     return fetchJson(url, {
       method: "PATCH",
       headers: await this.headers(),
@@ -84,13 +84,13 @@ export class SalesforceClient {
 
   async getRecord<T = unknown>(sobject: string, id: string, fields?: string[]): Promise<T> {
     const { instanceUrl } = await this.session();
-    const qs = fields?.length ? `?fields=${fields.join(",")}` : "";
-    return fetchJson(`${this.base(instanceUrl)}/sobjects/${sobject}/${id}${qs}`, { headers: await this.headers() });
+    const qs = fields?.length ? `?fields=${fields.map(encodeURIComponent).join(",")}` : "";
+    return fetchJson(`${this.base(instanceUrl)}/sobjects/${enc(sobject)}/${enc(id)}${qs}`, { headers: await this.headers() });
   }
 
   async createRecord(sobject: string, fields: Record<string, unknown>): Promise<{ id: string; success: boolean }> {
     const { instanceUrl } = await this.session();
-    return fetchJson(`${this.base(instanceUrl)}/sobjects/${sobject}`, {
+    return fetchJson(`${this.base(instanceUrl)}/sobjects/${enc(sobject)}`, {
       method: "POST",
       headers: await this.headers(),
       body: JSON.stringify(fields),
@@ -167,6 +167,9 @@ export class SalesforceClient {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Encode a URL path component to prevent traversal/injection. */
+const enc = (v: string | number): string => encodeURIComponent(String(v));
 
 /** Serialize records to CSV for Bulk API 2.0. The external id column is named `externalIdField`. */
 function recordsToCsv(

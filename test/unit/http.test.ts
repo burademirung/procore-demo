@@ -27,6 +27,16 @@ describe("fetchWithRetry", () => {
     expect(mock.calls).toHaveLength(2);
   });
 
+  it("honors an HTTP-date Retry-After then succeeds", async () => {
+    const soon = new Date(Date.now() + 5).toUTCString();
+    mock = installFetchMock([
+      { match: "/dated", responses: [{ status: 429, headers: { "retry-after": soon } }, { status: 200, json: { ok: true } }] },
+    ]);
+    const res = await fetchWithRetry("https://h/dated", {}, { ...fast, maxDelayMs: 50 });
+    expect(res.status).toBe(200);
+    expect(mock.calls).toHaveLength(2);
+  });
+
   it("retries on 5xx", async () => {
     mock = installFetchMock([
       { match: "/flaky", responses: [{ status: 503 }, { status: 502 }, { status: 200, json: {} }] },

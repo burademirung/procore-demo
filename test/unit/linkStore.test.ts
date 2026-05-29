@@ -8,6 +8,12 @@ describe("hashFields", () => {
   it("changes when a value changes", () => {
     expect(hashFields({ a: 1 })).not.toBe(hashFields({ a: 2 }));
   });
+  it("distinguishes value types and empty objects (no false no-op skips)", () => {
+    expect(hashFields({ active: false })).not.toBe(hashFields({ active: 0 }));
+    expect(hashFields({ active: false })).not.toBe(hashFields({}));
+    expect(hashFields({ v: null })).not.toBe(hashFields({}));
+    expect(hashFields({})).toBe(hashFields({})); // stable for empty
+  });
 });
 
 describe("InMemoryLinkStore", () => {

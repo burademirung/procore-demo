@@ -121,4 +121,24 @@ describe("SalesforceClient", () => {
     ]);
     await expect(client.bulkUpsertJob("X__c", "Procore_Id__c", [{ __externalId: "L1" }])).rejects.toThrow(/Failed/);
   });
+
+  it("throws when the Bulk job is Aborted", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([
+      { match: "/jobs/ingest/j4/batches", responses: { status: 201, text: "" } },
+      { match: "/jobs/ingest/j4", responses: [{ json: {} }, { json: { state: "Aborted" } }] },
+      { match: "/jobs/ingest", responses: { json: { id: "j4" } } },
+    ]);
+    await expect(client.bulkUpsertJob("X__c", "Procore_Id__c", [{ __externalId: "L1" }])).rejects.toThrow(/Aborted/);
+  });
+
+  it("throws when the Bulk job never reaches a terminal state (poll timeout)", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([
+      { match: "/jobs/ingest/j5/batches", responses: { status: 201, text: "" } },
+      { match: "/jobs/ingest/j5", responses: [{ json: {} }, { json: { state: "InProgress" } }] }, // never terminal
+      { match: "/jobs/ingest", responses: { json: { id: "j5" } } },
+    ]);
+    await expect(client.bulkUpsertJob("X__c", "Procore_Id__c", [{ __externalId: "L1" }])).rejects.toThrow(/InProgress/);
+  });
 });

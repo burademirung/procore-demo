@@ -133,7 +133,7 @@ export class ProcoreClient {
   }
 
   async getProject(projectId: string | number): Promise<unknown> {
-    return fetchJson(this.url(`${PATHS.projects}/${projectId}`), { headers: await this.authHeaders() });
+    return fetchJson(this.url(`${PATHS.projects}/${enc(projectId)}`), { headers: await this.authHeaders() });
   }
 
   async listCompanies(): Promise<unknown[]> {
@@ -167,7 +167,7 @@ export class ProcoreClient {
 
   /** Create a top-level record (e.g. a project from a won Salesforce opportunity). [NEEDS LIVE VERIFICATION] */
   async create(segment: string, body: Record<string, unknown>): Promise<{ id: number }> {
-    return fetchJson(this.url(`/rest/v1.0/${segment}`), {
+    return fetchJson(this.url(`/rest/v1.0/${enc(segment)}`), {
       method: "POST",
       headers: { ...(await this.authHeaders()), "content-type": "application/json" },
       body: JSON.stringify(body),
