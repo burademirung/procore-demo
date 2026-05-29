@@ -57,6 +57,12 @@ Provision a Procore webhook using the two-tier hook + triggers model.
 | `dedupe_contacts` | `{ contacts: [{id,name?,email?,source}] }` | `{ duplicateGroups, merges }` | **elicitation** (canonical email) |
 | `resolve_sync_conflict` | `{ objectKey, field, procoreValue, salesforceValue }` | `{ resolved, decision?, winner? }` | **elicitation** (enum) |
 | `summarize_project` | `{ projectId }` | `{ projectId, summary, model? }` | **sampling** |
+| `list_procore_projects` | `{ cursor?, limit? }` | `{ items, nextCursor? }` | **pagination** (cursor) |
+| `authorize_salesforce` | `{ scope? }` | `{ action }` | **URL-mode elicitation** (SEP-1036) |
+
+Additional protocol features in use: **logging** (`run_reconciliation` streams `notifications/message`),
+**cancellation** (reconcile/financials honor `AbortSignal`), and **`resources/list_changed`** (fired when a
+reverse create introduces a new resource).
 
 All tools carry annotations (`readOnlyHint`/`destructiveHint`/`idempotentHint`). Tools that need
 client capabilities (sampling/elicitation) return an `isError` result if the client lacks support.

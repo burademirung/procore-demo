@@ -1,11 +1,12 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { ProcoreClient } from "../../src/clients/procore.js";
 import { InMemoryTokenStore } from "../../src/auth/tokenStore.js";
+import { HttpError } from "../../src/clients/http.js";
 import { testConfig } from "../helpers/fixtures.js";
 import { installFetchMock } from "../helpers/fetchMock.js";
 
-async function clientWithToken(token = { accessToken: "pc-access", expiresAt: Date.now() + 3_600_000 }) {
-  const cfg = testConfig();
+async function clientWithToken(token = { accessToken: "pc-access", expiresAt: Date.now() + 3_600_000 }, cfgOverrides = {}) {
+  const cfg = testConfig(cfgOverrides);
   const tokens = new InMemoryTokenStore();
   await tokens.set("default", "procore", token);
   return { client: new ProcoreClient(cfg, tokens), tokens, cfg };
@@ -81,6 +82,28 @@ describe("ProcoreClient resources", () => {
     const { client } = await clientWithToken();
     mock = installFetchMock([{ match: "/rest/v1.0/projects/42", responses: { json: { id: 42, name: "X" } } }]);
     expect(await client.getProject(42)).toMatchObject({ id: 42 });
+  });
+
+  it("percent-encodes path components in getById / getProjectResource", async () => {
+    const { client } = await clientWithToken();
+    mock = installFetchMock([{ match: "/rest/v1.0/", responses: { json: { id: 1 } } }]);
+    await client.getById("companies", "a/b");
+    await client.getProjectResource("rfis", 7, "x/y");
+    expect(mock.calls[0]!.url).toContain("/rest/v1.0/companies/a%2Fb");
+    expect(mock.calls[1]!.url).toContain("/rest/v1.0/projects/7/rfis/x%2Fy");
+  });
+
+  it("throws HttpError when a paginated page returns an error status", async () => {
+    const { client } = await clientWithToken();
+    mock = installFetchMock([{ match: "/rest/v1.0/projects", responses: { status: 403, text: "Forbidden" } }]);
+    await expect(client.listProjects()).rejects.toBeInstanceOf(HttpError);
+  });
+
+  it("omits the company-id header when no company is configured", async () => {
+    const { client } = await clientWithToken({ accessToken: "pc-access", expiresAt: Date.now() + 3_600_000 }, { PROCORE_COMPANY_ID: "" });
+    mock = installFetchMock([{ match: "/rest/v1.0/companies", responses: { json: [] } }]);
+    await client.listCompanies();
+    expect(mock.calls[0]!.headers["procore-company-id"]).toBeUndefined();
   });
 });
 

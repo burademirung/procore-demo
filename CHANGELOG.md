@@ -3,6 +3,26 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [0.3.0] — 2026-05-28 — Broader MCP surface + third-review hardening
+
+### Added — MCP capabilities (closing declared-but-unused gaps)
+- **Logging** — engine emits structured `notifications/message` during sync/reconcile (+`logging/setLevel`).
+- **`resources/list_changed`** — fired when a new record introduces a new resource.
+- **Cancellation** — `run_reconciliation` / `sync_procore_financials` honor the client's `AbortSignal` and return partial results.
+- **Pagination** — `list_procore_projects` with opaque cursors (`{ items, nextCursor }`).
+- **URL-mode elicitation** — `authorize_salesforce` (SEP-1036) for out-of-band OAuth consent; degrades gracefully.
+
+### Fixed (third independent review)
+- `loadConfig` now actually reads `WEBHOOK_SECRET` (`min(1)` so an empty value fails loud).
+- Constant-time `timingSafeEqual` (no length short-circuit); `recordsToCsv` escapes `\r`.
+- Worker webhook narrows the parsed event to `const` before the async closure.
+- Security headers extracted to a tested module (`src/security/headers.ts`).
+
+### Quality
+- **137 tests**, ~98% stmts / ~99% lines / ~89% branches (gated). Added tests proving `enc()` actually
+  percent-encodes (was untestable), Bulk PUT-failure, paginate non-2xx, audit timestamps, and cancellation.
+- HTTP security headers (`public/_headers` + Worker) and `/.well-known/security.txt`.
+
 ## [0.2.0] — 2026-05-28 — Advanced MCP capabilities + hardening
 
 ### Added — full MCP protocol surface
@@ -33,7 +53,7 @@ All notable changes to this project are documented here. Format loosely follows
 - **Exact Origin matching** (removed `startsWith` prefix bypass); path-param encoding; HTTP-date `Retry-After`.
 
 ### Quality
-- **118 tests**, coverage ~98% statements / ~99% lines / 86% branches (gated at 95/95/85/95). ESLint + Semgrep + `npm audit` clean.
+- **137 tests**, coverage ~98% statements / ~99% lines / ~89% branches (gated at 95/95/85/95). ESLint + Semgrep + `npm audit` clean.
 - CI/CD (GitHub Actions), Dockerfile, example client, `server.json` manifest, issue/PR templates.
 
 ## [0.1.0] — 2026-05-28 — Phase 0 (Foundation)

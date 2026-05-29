@@ -22,6 +22,11 @@ MCP 2025-06-18 and 2025-11-25 specifications.
 | **Progress notifications** | Bulk reconcile progress | `run_reconciliation` emits `notifications/progress` when a `progressToken` is supplied | [transports](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports) | **Implemented** ✓ |
 | **Streamable HTTP / SSE** (server-initiated) | Real-time webhook push | Remote transport on `/mcp`; webhook receiver at `/webhooks/procore` | [transports](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports) | **Implemented** (transport) / push wiring is roadmap |
 | **Idempotency / dedup** | Webhook replay storm | event-id dedup + upsert-by-External-ID | — | **Implemented** ✓ tested |
+| **Logging** (`notifications/message`, `logging/setLevel`) | Live reconciliation diagnostics | engine `setLogger` → `server.sendLoggingMessage` | [logging](https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/logging) | **Implemented** ✓ tested |
+| **`resources/list_changed`** | New record → new resource announced | fired on reverse `create` | server spec | **Implemented** ✓ tested |
+| **Cancellation** (`AbortSignal`) | Cancel a long reconciliation | `reconcileProjects(signal)` / `syncFinancials(signal)` via `extra.signal` | [cancellation](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/cancellation) | **Implemented** ✓ tested |
+| **Pagination** (opaque cursor) | Page through projects | `list_procore_projects` → `{ items, nextCursor }` | server spec | **Implemented** ✓ tested |
+| **URL-mode Elicitation** (SEP-1036) | Salesforce OAuth consent | `authorize_salesforce` → `elicitInput({ mode:"url" })` | [elicitation 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation) | **Implemented** (degrades w/o client support) ✓ tested |
 | **Tasks** (experimental, durable long-running) | Bulk reconcile as a task | — | [tasks (2025-11-25)](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) | **Roadmap** (experimental; nascent client support) |
 
 ## The new tools (0.2.0)

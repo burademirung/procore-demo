@@ -25,4 +25,10 @@ describe("config", () => {
     expect(cfg.procore.clientId).toBe("x");
     expect(cfg.salesforce.username).toBe("u@e.com");
   });
+
+  it("accepts a non-empty webhook secret but rejects an empty one (fail loud)", () => {
+    expect(loadConfig({ WEBHOOK_SECRET: "s3cret" }).webhookSecret).toBe("s3cret");
+    expect(loadConfig({}).webhookSecret).toBeUndefined();
+    expect(() => loadConfig({ WEBHOOK_SECRET: "" })).toThrow();
+  });
 });

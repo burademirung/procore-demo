@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { CreateMessageRequestSchema, ElicitRequestSchema, ResourceUpdatedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CreateMessageRequestSchema,
+  ElicitRequestSchema,
+  ResourceUpdatedNotificationSchema,
+  ResourceListChangedNotificationSchema,
+  LoggingMessageNotificationSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import { buildMcpServer } from "../../src/mcp/server.js";
 import { buildTestStack } from "../helpers/fixtures.js";
 import { installFetchMock } from "../helpers/fetchMock.js";
@@ -265,5 +271,64 @@ describe("MCP advanced capabilities", () => {
       onprogress: (p) => progress.push(p.progress),
     });
     expect(progress).toContain(100);
+  });
+
+  it("LOGGING: reconciliation emits logging/message notifications", async () => {
+    const logs: string[] = [];
+    let resolveGot: () => void;
+    const got = new Promise<void>((r) => (resolveGot = r));
+    conn.client.setNotificationHandler(LoggingMessageNotificationSchema, async (n) => {
+      logs.push(JSON.stringify(n.params.data));
+      resolveGot();
+    });
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects", responses: { json: [{ id: 1, name: "A" }] } },
+      { match: "/sobjects/Procore_Project__c/", responses: { json: { id: "x", success: true } } },
+    ]);
+    await conn.client.callTool({ name: "run_reconciliation", arguments: { scope: "projects" } });
+    await Promise.race([got, new Promise((_, rej) => setTimeout(() => rej(new Error("no log")), 2000))]);
+    expect(logs.join(" ")).toContain("reconcile");
+  });
+
+  it("LIST_CHANGED: a reverse create emits resources/list_changed", async () => {
+    let resolveGot: () => void;
+    const got = new Promise<void>((r) => (resolveGot = r));
+    conn.client.setNotificationHandler(ResourceListChangedNotificationSchema, async () => resolveGot());
+    mock = installFetchMock([{ match: "/rest/v1.0/projects", responses: { json: { id: 9001 } } }]);
+    await conn.client.callTool({
+      name: "sync_salesforce_to_procore",
+      arguments: { sobject: "Procore_Project__c", changeType: "CREATE", recordId: "006", fields: { Name: "T" } },
+    });
+    await Promise.race([got, new Promise((_, rej) => setTimeout(() => rej(new Error("no list_changed")), 2000))]);
+    expect(true).toBe(true); // resolved → notification received
+  });
+
+  it("PAGINATION: list_procore_projects pages with an opaque cursor", async () => {
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects", responses: { json: [{ id: 1 }, { id: 2 }, { id: 3 }] } },
+    ]);
+    const p1 = await conn.client.callTool({ name: "list_procore_projects", arguments: { limit: 2 } });
+    const sc1 = (p1 as { structuredContent?: { items?: unknown[]; nextCursor?: string } }).structuredContent!;
+    expect(sc1.items).toHaveLength(2);
+    expect(sc1.nextCursor).toBeTruthy();
+    const p2 = await conn.client.callTool({ name: "list_procore_projects", arguments: { limit: 2, cursor: sc1.nextCursor } });
+    const sc2 = (p2 as { structuredContent?: { items?: unknown[]; nextCursor?: string } }).structuredContent!;
+    expect(sc2.items).toHaveLength(1); // last page
+    expect(sc2.nextCursor).toBeUndefined();
+  });
+
+  it("URL ELICITATION: authorize_salesforce degrades to isError when the client can't elicit", async () => {
+    // URL-mode elicitation is an out-of-band flow; we assert the tool is wired and degrades
+    // gracefully when the client lacks elicitation support (the deterministic, client-agnostic path).
+    const stack = await buildTestStack();
+    const server = buildMcpServer({ procore: stack.procore, salesforce: stack.salesforce, sync: stack.sync });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await server.connect(st);
+    const bare = new Client({ name: "bare", version: "0.0.0" }, { capabilities: {} });
+    await bare.connect(ct);
+    const r = await bare.callTool({ name: "authorize_salesforce", arguments: { scope: "api" } });
+    expect((r as { isError?: boolean }).isError).toBe(true);
+    await bare.close();
+    await server.close();
   });
 });

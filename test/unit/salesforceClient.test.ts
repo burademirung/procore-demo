@@ -54,6 +54,13 @@ describe("SalesforceClient", () => {
     expect(JSON.parse(call.body!)).toEqual({ Name: "Acme" });
   });
 
+  it("percent-encodes path components to prevent traversal/injection", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([{ match: "/sobjects/Account/Procore_Company_Id__c/", responses: { json: { id: "001", created: true, success: true } } }]);
+    await client.upsertByExternalId("Account", "Procore_Company_Id__c", "abc/def", { Name: "X" });
+    expect(mock.calls[0]!.url).toContain("/Procore_Company_Id__c/abc%2Fdef"); // slash encoded, not a path segment
+  });
+
   it("creates and reads a record", async () => {
     const client = await sfClient();
     mock = installFetchMock([
@@ -140,5 +147,36 @@ describe("SalesforceClient", () => {
       { match: "/jobs/ingest", responses: { json: { id: "j5" } } },
     ]);
     await expect(client.bulkUpsertJob("X__c", "Procore_Id__c", [{ __externalId: "L1" }])).rejects.toThrow(/InProgress/);
+  });
+
+  it("throws when the CSV batch upload (PUT) is rejected", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([
+      { match: "/jobs/ingest/j6/batches", responses: { status: 413, text: "Payload Too Large" } },
+      { match: "/jobs/ingest", responses: { json: { id: "j6" } } },
+    ]);
+    await expect(client.bulkUpsertJob("X__c", "Procore_Id__c", [{ __externalId: "L1" }])).rejects.toThrow(/413/);
+  });
+
+  it("falls back to records.length when Salesforce omits numberRecordsProcessed; quotes embedded quotes", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([
+      { match: "/jobs/ingest/j7/batches", responses: { status: 201, text: "" } },
+      { match: "/jobs/ingest/j7", responses: [{ json: {} }, { json: { state: "JobComplete" } }] }, // no count
+      { match: "/jobs/ingest", responses: { json: { id: "j7" } } },
+    ]);
+    const r = await client.bulkUpsertJob("X__c", "Procore_Id__c", [
+      { __externalId: "L1", Note__c: 'say "hi"' },
+      { __externalId: "L2" },
+    ]);
+    expect(r.processed).toBe(2); // fallback to input length
+    expect(mock.callsFor("/batches")[0]!.body).toContain('"say ""hi"""'); // RFC-4180 quote doubling
+  });
+
+  it("getRecord without fields omits the ?fields query", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([{ match: "/sobjects/Account/001", responses: { json: { Id: "001" } } }]);
+    await client.getRecord("Account", "001");
+    expect(mock.calls[0]!.url).not.toContain("?fields=");
   });
 });

@@ -12,12 +12,17 @@ import {
 import type { AuditLog } from "./audit.js";
 import { hashFields, type LinkStore } from "./linkStore.js";
 
-/** Optional dependencies for richer behavior (audit trail, real-time notifications, link/hash store). */
+export type SyncAction = "upsert" | "create" | "soft_delete";
+export type LogLevel = "debug" | "info" | "warning" | "error";
+
+/** Optional dependencies for richer behavior (audit trail, real-time notifications, logging, link/hash store). */
 export interface SyncEngineOptions {
   audit?: AuditLog;
   links?: LinkStore;
-  /** Called after a successful write so the host can emit an MCP resources/updated notification. */
-  onSynced?: (info: { system: "procore" | "salesforce"; object: string; externalId: string }) => void;
+  /** Called after a successful write so the host can emit MCP resources/updated + list_changed. */
+  onSynced?: (info: { system: "procore" | "salesforce"; object: string; externalId: string; action: SyncAction }) => void;
+  /** Structured logger so the host can forward MCP logging/message notifications. */
+  log?: (level: LogLevel, message: string, data?: Record<string, unknown>) => void;
 }
 
 /** Salesforce Change Data Capture event (inbound SF → Procore). */
@@ -79,6 +84,7 @@ export interface SyncResult {
 
 export class SyncEngine {
   private notifier?: SyncEngineOptions["onSynced"];
+  private logger?: SyncEngineOptions["log"];
 
   constructor(
     private readonly procore: ProcoreClient,
@@ -87,6 +93,7 @@ export class SyncEngine {
     private readonly opts: SyncEngineOptions = {},
   ) {
     this.notifier = opts.onSynced;
+    this.logger = opts.log;
   }
 
   /** Register/replace the real-time notifier after construction (used to wire MCP resources/updated). */
@@ -94,9 +101,19 @@ export class SyncEngine {
     this.notifier = fn;
   }
 
-  private notify(system: "procore" | "salesforce", object: string, externalId: string, action: "upsert" | "create" | "soft_delete"): void {
+  /** Register/replace the structured logger after construction (used to wire MCP logging/message). */
+  setLogger(fn: SyncEngineOptions["log"]): void {
+    this.logger = fn;
+  }
+
+  private log(level: LogLevel, message: string, data?: Record<string, unknown>): void {
+    this.logger?.(level, message, data);
+  }
+
+  private notify(system: "procore" | "salesforce", object: string, externalId: string, action: SyncAction): void {
     this.opts.audit?.record({ action, system, object, externalId, status: "ok", at: Date.now() });
-    this.notifier?.({ system, object, externalId });
+    this.log("info", `${action} ${system}:${object}#${externalId}`, { externalId });
+    this.notifier?.({ system, object, externalId, action });
   }
 
   /** Fetch the canonical Procore record for an event, using the right endpoint for its resource. */
@@ -187,12 +204,17 @@ export class SyncEngine {
    * Reconciliation backstop (spec §5): periodic delta sweep that catches webhook drops
    * (at-least-once ≠ exactly-once). Phase 5 wires this to a cron trigger.
    */
-  async reconcileProjects(): Promise<{ scanned: number; upserted: number }> {
+  async reconcileProjects(signal?: AbortSignal): Promise<{ scanned: number; upserted: number; cancelled?: boolean }> {
     const mapping = mappingForProcoreResource("Projects");
     if (!mapping) return { scanned: 0, upserted: 0 };
     const projects = (await this.procore.listProjects()) as Array<Record<string, unknown>>;
+    this.log("info", `reconcile: scanning ${projects.length} projects`);
     let upserted = 0;
     for (const project of projects) {
+      if (signal?.aborted) {
+        this.log("warning", `reconcile cancelled after ${upserted}/${projects.length}`);
+        return { scanned: projects.length, upserted, cancelled: true };
+      }
       const id = project.id;
       if (id === undefined) continue;
       await this.salesforce.upsertByExternalId(
@@ -203,6 +225,7 @@ export class SyncEngine {
       );
       upserted += 1;
     }
+    this.log("info", `reconcile: upserted ${upserted}/${projects.length}`);
     return { scanned: projects.length, upserted };
   }
 
@@ -211,10 +234,11 @@ export class SyncEngine {
    * into their Salesforce custom objects via per-record REST upsert. For high-volume line items,
    * SalesforceClient.bulkUpsertJob (Bulk API 2.0) is the better tool. Returns per-object counts.
    */
-  async syncFinancials(projectId: string | number): Promise<{ synced: number; byObject: Record<string, number> }> {
+  async syncFinancials(projectId: string | number, signal?: AbortSignal): Promise<{ synced: number; byObject: Record<string, number> }> {
     const byObject: Record<string, number> = {};
     let synced = 0;
     for (const key of FINANCIAL_MAPPING_KEYS) {
+      if (signal?.aborted) break;
       const m = mappingByKey(key);
       if (!m) continue;
       const records = (await this.procore.listProjectResource(segmentFor(m.procoreResource), projectId)) as Array<Record<string, unknown>>;

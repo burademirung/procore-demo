@@ -19,9 +19,11 @@ function hexFromBuffer(buf: ArrayBuffer): string {
 
 /** Constant-time string compare (avoids leaking match length/position via timing). */
 export function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  // Process the full length regardless of mismatch so the comparison is genuinely constant-time
+  // (a length difference seeds a non-zero diff but does not short-circuit the loop).
+  const len = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < len; i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
   return diff === 0;
 }
 

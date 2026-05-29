@@ -1,6 +1,6 @@
 {
   "name": "procore-salesforce-mcp",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Bidirectional Procore <-> Salesforce broker exposed as a Model Context Protocol (MCP) server",
   "type": "module",
   "main": "dist/node/index.js",

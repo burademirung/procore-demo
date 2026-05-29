@@ -106,6 +106,17 @@ describe("SyncEngine.syncFinancials", () => {
     expect(result.byObject["Procore_Commitment__c"]).toBe(1);
     expect(result.byObject["Procore_Change_Order__c"]).toBe(1);
   });
+
+  it("reports zero and skips the Salesforce write when a collection has no id'd records", async () => {
+    const { sync } = await buildTestStack();
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects/7/", responses: { json: [{ title: "no id" }] } }, // all filtered out
+      { match: "/sobjects/", responses: { json: { id: "x", success: true } } },
+    ]);
+    const result = await sync.syncFinancials(7);
+    expect(result.synced).toBe(0);
+    expect(mock.callsFor("/sobjects/")).toHaveLength(0);
+  });
 });
 
 describe("SyncEngine.createCaseFromRfi", () => {
@@ -151,8 +162,8 @@ describe("SyncEngine options — audit, notifier, no-op skip", () => {
     ]);
     expect((await engine.handleProcoreWebhook({ ...baseEvent })).status).toBe("synced");
     expect(audit.entries()).toHaveLength(1);
-    expect(audit.entries()[0]).toMatchObject({ action: "upsert", system: "salesforce", externalId: "42" });
-    expect(notes).toEqual([{ system: "salesforce", object: "Procore_Project__c", externalId: "42" }]);
+    expect(audit.entries()[0]).toMatchObject({ action: "upsert", system: "salesforce", externalId: "42", at: expect.any(Number) });
+    expect(notes).toEqual([{ system: "salesforce", object: "Procore_Project__c", externalId: "42", action: "upsert" }]);
   });
 
   it("skips a no-op write when the field hash is unchanged", async () => {
@@ -229,6 +240,15 @@ describe("SyncEngine.handleSalesforceChange (reverse: SF → Procore)", () => {
     expect(r.status).toBe("ignored");
     expect(mock.calls).toHaveLength(0);
   });
+
+  it("records a 'create' audit entry on a reverse CREATE", async () => {
+    const { procore, salesforce, dedup } = await buildTestStack();
+    const audit = new InMemoryAuditLog();
+    const engine = new SyncEngine(procore, salesforce, dedup, { audit });
+    mock = installFetchMock([{ match: "/rest/v1.0/projects", responses: { json: { id: 9001 } } }]);
+    await engine.handleSalesforceChange({ id: "sf-audit", sobject: "Procore_Project__c", changeType: "CREATE", fields: { Name: "T" } });
+    expect(audit.entries()[0]).toMatchObject({ action: "create", system: "procore", externalId: "9001", at: expect.any(Number) });
+  });
 });
 
 describe("SyncEngine resource-aware fetch routing", () => {
@@ -250,5 +270,45 @@ describe("SyncEngine resource-aware fetch routing", () => {
     });
     expect(result.status).toBe("synced");
     expect(mock.callsFor("/rest/v1.0/projects/700/rfis/214")).toHaveLength(1);
+  });
+
+  it("throws when a project-scoped resource event has no project_id", async () => {
+    const { sync } = await buildTestStack();
+    await expect(
+      sync.handleProcoreWebhook({ id: "bad", resource_name: "RfiS", event_type: "update", resource_id: 214 }),
+    ).rejects.toThrow(/missing project_id/);
+  });
+});
+
+describe("SyncEngine cancellation + logging", () => {
+  let mock: ReturnType<typeof installFetchMock>;
+  afterEach(() => mock?.restore());
+
+  it("aborts a reconciliation when the signal is already aborted (partial result, no writes)", async () => {
+    const { procore, salesforce, dedup } = await buildTestStack();
+    const logs: string[] = [];
+    const engine = new SyncEngine(procore, salesforce, dedup, { log: (_l, m) => logs.push(m) });
+    mock = installFetchMock([
+      { match: "/rest/v1.0/projects", responses: { json: [{ id: 1 }, { id: 2 }] } },
+      { match: "/sobjects/", responses: { json: { id: "x", success: true } } },
+    ]);
+    const ac = new AbortController();
+    ac.abort();
+    const result = await engine.reconcileProjects(ac.signal);
+    expect(result.cancelled).toBe(true);
+    expect(result.upserted).toBe(0);
+    expect(mock.callsFor("/sobjects/")).toHaveLength(0); // no Salesforce writes
+    expect(logs.some((m) => /cancelled/.test(m))).toBe(true); // emitted a log
+  });
+
+  it("syncFinancials stops immediately when the signal is aborted", async () => {
+    const { procore, salesforce, dedup } = await buildTestStack();
+    const engine = new SyncEngine(procore, salesforce, dedup);
+    mock = installFetchMock([{ match: "__never__", responses: { json: [] } }]);
+    const ac = new AbortController();
+    ac.abort();
+    const result = await engine.syncFinancials(7, ac.signal);
+    expect(result.synced).toBe(0);
+    expect(mock.calls).toHaveLength(0); // never even listed a financial collection
   });
 });

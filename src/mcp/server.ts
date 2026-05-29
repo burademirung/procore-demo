@@ -42,17 +42,22 @@ function templateVar(value: string | string[] | undefined): string {
 
 export function buildMcpServer(deps: Deps): McpServer {
   const server = new McpServer(
-    { name: "procore-salesforce-mcp", version: "0.2.0" },
+    { name: "procore-salesforce-mcp", version: "0.3.0" },
     { capabilities: { logging: {}, resources: { subscribe: true, listChanged: true } } },
   );
 
-  // Real-time: when a record syncs, push an MCP resources/updated notification to subscribers.
+  // Real-time: when a record syncs, push resources/updated; a brand-new record also changes the
+  // resource *set*, so emit resources/list_changed on create.
   deps.sync.setNotifier((info) => {
     server.server
       .sendResourceUpdated({ uri: `conduit://${info.system}/${info.object}/${info.externalId}` })
-      .catch(() => {
-        /* best-effort; client may not be subscribed */
-      });
+      .catch(() => {});
+    if (info.action === "create") server.server.sendResourceListChanged().catch(() => {});
+  });
+
+  // Logging: forward the engine's structured logs as MCP logging/message notifications.
+  deps.sync.setLogger((level, message, data) => {
+    server.server.sendLoggingMessage({ level, logger: "sync", data: { message, ...(data ?? {}) } }).catch(() => {});
   });
 
   // ── Tools ───────────────────────────────────────────────────────────────────
@@ -82,7 +87,7 @@ export function buildMcpServer(deps: Deps): McpServer {
       title: "Run reconciliation sweep",
       description: "Delta-sweep Procore projects into Salesforce to catch missed webhooks. Reports progress.",
       inputSchema: { scope: z.enum(["projects"]).default("projects") },
-      outputSchema: { scanned: z.number(), upserted: z.number() },
+      outputSchema: { scanned: z.number(), upserted: z.number(), cancelled: z.boolean().optional() },
       annotations: { idempotentHint: true, destructiveHint: false, openWorldHint: true },
     },
     async (_args, extra) => {
@@ -99,7 +104,7 @@ export function buildMcpServer(deps: Deps): McpServer {
         }
       };
       await sendProgress(0, 100);
-      const result = await deps.sync.reconcileProjects();
+      const result = await deps.sync.reconcileProjects(extra.signal); // honors client cancellation
       await sendProgress(100, 100);
       return ok(result);
     },
@@ -114,7 +119,7 @@ export function buildMcpServer(deps: Deps): McpServer {
       outputSchema: { synced: z.number(), byObject: z.record(z.string(), z.number()) },
       annotations: { idempotentHint: true, destructiveHint: false, openWorldHint: true },
     },
-    async ({ projectId }) => ok(await deps.sync.syncFinancials(projectId)),
+    async ({ projectId }, extra) => ok(await deps.sync.syncFinancials(projectId, extra.signal)),
   );
 
   server.registerTool(
@@ -305,6 +310,50 @@ export function buildMcpServer(deps: Deps): McpServer {
         return ok({ projectId: String(projectId), summary: text, model: res.model });
       } catch {
         return errResult("This client does not support sampling; cannot generate an AI summary.");
+      }
+    },
+  );
+
+  // ── Tool with cursor PAGINATION ───────────────────────────────────────────────
+  server.registerTool(
+    "list_procore_projects",
+    {
+      title: "List Procore projects (paginated)",
+      description: "List the company's Procore projects with opaque cursor pagination.",
+      inputSchema: { cursor: z.string().optional(), limit: z.number().int().min(1).max(100).default(20) },
+      outputSchema: { items: z.array(z.record(z.string(), z.unknown())), nextCursor: z.string().optional() },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ cursor, limit }) => {
+      const all = (await deps.procore.listProjects()) as Array<Record<string, unknown>>;
+      const start = cursor ? Number(atob(cursor)) || 0 : 0;
+      const items = all.slice(start, start + limit);
+      const next = start + limit < all.length ? btoa(String(start + limit)) : undefined;
+      return ok({ items, ...(next ? { nextCursor: next } : {}) });
+    },
+  );
+
+  // ── Tool using URL-mode ELICITATION (out-of-band OAuth consent, SEP-1036) ──────
+  server.registerTool(
+    "authorize_salesforce",
+    {
+      title: "Authorize Salesforce (OAuth consent)",
+      description: "Ask the user to complete a Salesforce OAuth consent via URL-mode elicitation.",
+      inputSchema: { scope: z.string().default("api refresh_token") },
+      outputSchema: { action: z.string() },
+      annotations: { openWorldHint: true },
+    },
+    async ({ scope }) => {
+      try {
+        const res = await server.server.elicitInput({
+          mode: "url",
+          elicitationId: crypto.randomUUID(),
+          message: "Approve Salesforce access so Conduit can sync on your behalf.",
+          url: `https://login.salesforce.com/services/oauth2/authorize?response_type=code&scope=${encodeURIComponent(scope)}`,
+        });
+        return ok({ action: res.action });
+      } catch {
+        return errResult("This client does not support URL-mode elicitation.");
       }
     },
   );

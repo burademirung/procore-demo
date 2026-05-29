@@ -181,7 +181,7 @@ function recordsToCsv(
   const cols = [externalIdField, ...fieldKeys];
   const esc = (v: unknown) => {
     const s = v === undefined || v === null ? "" : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; // \r too: Bulk uses LF line endings
   };
   const lines = [cols.join(",")];
   for (const r of records) {

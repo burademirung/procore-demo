@@ -17,8 +17,9 @@ const ConfigSchema = z.object({
     .default("http://localhost,http://127.0.0.1")
     .transform((s) => s.split(",").map((o) => o.trim()).filter(Boolean)),
   rsTokensEncKey: z.string().optional(),
-  // Shared secret for verifying inbound webhook HMAC signatures (optional but recommended).
-  webhookSecret: z.string().optional(),
+  // Shared secret for verifying inbound webhook HMAC signatures (recommended).
+  // min(1) so an explicitly-empty value fails loudly rather than silently disabling verification.
+  webhookSecret: z.string().min(1).optional(),
 
   procore: z.object({
     clientId: z.string().optional(),
@@ -49,6 +50,7 @@ export function loadConfig(env: RawEnv): Config {
     port: env.PORT,
     mcpAllowedOrigins: env.MCP_ALLOWED_ORIGINS,
     rsTokensEncKey: env.RS_TOKENS_ENC_KEY,
+    webhookSecret: env.WEBHOOK_SECRET,
     procore: {
       clientId: env.PROCORE_CLIENT_ID,
       clientSecret: env.PROCORE_CLIENT_SECRET,

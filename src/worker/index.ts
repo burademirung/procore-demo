@@ -9,6 +9,7 @@ import { SyncEngine, type ProcoreWebhookEvent } from "../sync/engine.js";
 import { buildMcpServer } from "../mcp/server.js";
 import { PropsTokenStore, KVDedupStore, type OAuthProps } from "./stores.js";
 import { verifyWebhookSignature } from "../security/webhookSignature.js";
+import { withSecurityHeaders } from "../security/headers.js";
 
 /**
  * Cloudflare Workers deploy target (PRIMARY) — the architecture the verified research
@@ -69,26 +70,9 @@ export class ProcoreSalesforceMCP extends McpAgent<Env, unknown, OAuthProps> {
  *
  * [VERIFIED] Procore webhooks need a 2xx within 5s → ACK then process via waitUntil.
  */
-/** Security headers applied to every Worker-generated response (assets use public/_headers). */
-const SECURITY_HEADERS: Record<string, string> = {
-  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "Referrer-Policy": "no-referrer",
-  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
-  "Cross-Origin-Opener-Policy": "same-origin",
-  "Cross-Origin-Resource-Policy": "same-origin",
-  "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
-};
-function secure(resp: Response): Response {
-  const headers = new Headers(resp.headers);
-  for (const [k, v] of Object.entries(SECURITY_HEADERS)) headers.set(k, v);
-  return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers });
-}
-
 const defaultHandler: ExportedHandler<Env> = {
   async fetch(req, env, ctx): Promise<Response> {
-    return secure(await handleDefault(req, env, ctx));
+    return withSecurityHeaders(await handleDefault(req, env, ctx));
   },
 };
 
@@ -108,13 +92,14 @@ async function handleDefault(req: Request, env: Env, ctx: ExecutionContext): Pro
           return new Response("invalid signature", { status: 401 });
         }
       }
-      let event: ProcoreWebhookEvent | null = null;
+      let parsed: ProcoreWebhookEvent | null = null;
       try {
-        event = raw ? (JSON.parse(raw) as ProcoreWebhookEvent) : null;
+        parsed = raw ? (JSON.parse(raw) as ProcoreWebhookEvent) : null;
       } catch {
         return new Response("bad payload", { status: 400 });
       }
-      if (!event?.id) return new Response("bad payload", { status: 400 });
+      if (!parsed?.id) return new Response("bad payload", { status: 400 });
+      const event = parsed; // const → TypeScript narrows it inside the waitUntil closure
       // ACK fast; reconcile in the background.
       ctx.waitUntil(
         (async () => {
