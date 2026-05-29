@@ -179,4 +179,43 @@ describe("SalesforceClient", () => {
     await client.getRecord("Account", "001");
     expect(mock.calls[0]!.url).not.toContain("?fields=");
   });
+
+  it("uploads a ContentVersion via REST multipart and links it to a record", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([{ match: "/sobjects/ContentVersion", responses: { json: { id: "068xx", success: true } } }]);
+    const r = await client.uploadContentVersion({
+      title: "Master Agreement",
+      fileName: "ma.pdf",
+      data: new Uint8Array([0x25, 0x50, 0x44, 0x46]), // "%PDF"
+      linkedRecordId: "800xx",
+    });
+    expect(r).toMatchObject({ id: "068xx", success: true });
+    const call = mock.calls[0]!;
+    expect(call.url).toContain(`${INSTANCE}/services/data/v62.0/sobjects/ContentVersion`);
+    expect(call.method).toBe("POST");
+    expect(call.headers["authorization"]).toBe("Bearer sf-access");
+    // multipart path: we must NOT force application/json — fetch derives the boundary itself.
+    expect(call.headers["content-type"]).toBeUndefined();
+  });
+
+  it("submits a record for approval via the Process Approvals resource", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([{ match: "/process/approvals/", responses: { json: [{ success: true, instanceId: "04g" }] } }]);
+    await client.processApproval({ actionType: "Submit", contextId: "800xx", comments: "Please review", nextApproverIds: ["005x"] });
+    const call = mock.calls[0]!;
+    expect(call.url).toContain(`${INSTANCE}/services/data/v62.0/process/approvals/`);
+    expect(call.method).toBe("POST");
+    const body = JSON.parse(call.body!);
+    expect(body.requests[0]).toMatchObject({ actionType: "Submit", contextId: "800xx", comments: "Please review", nextApproverIds: ["005x"] });
+  });
+
+  it("lists approval processes via GET /process/approvals/", async () => {
+    const client = await sfClient();
+    mock = installFetchMock([{ match: "/process/approvals/", responses: { json: { approvals: [{ object: "Contract" }] } } }]);
+    await client.listApprovalProcesses();
+    const call = mock.calls[0]!;
+    expect(call.method).toBe("GET");
+    expect(call.url).toContain(`${INSTANCE}/services/data/v62.0/process/approvals/`);
+    expect(call.body).toBeUndefined();
+  });
 });

@@ -121,12 +121,20 @@ records) and financials & PM objects are **Procore → Salesforce** (CRM reporti
 is rarely the source of truth for construction documents/financials.
 
 > **★ Legal documents (featured).** `sync_project_legal_documents` upserts the four legal-document
-> object types above by External ID — the headline capability. Today it syncs the **structured
-> record + metadata** (status, type, dates, amount), exactly at the level of the financial vertical.
-> **Next layer:** sync the underlying **binary file** (PDF/DOCX) into Salesforce Files —
-> upload via `ContentVersion` (base64 `VersionData`), link to the record via `ContentDocumentLink`,
-> retrieve via the `VersionData` blob endpoint. `[NEEDS LIVE VERIFICATION]` exact ContentVersion
-> size/heap limits and the OAuth scopes required for Files. *(Deep-research findings to be folded in.)*
+> object types above by External ID — the headline capability. It syncs the **structured
+> record + metadata** (status, type, dates, amount), at the level of the financial vertical.
+>
+> **Binary file layer (implemented, 0.5.0 · Tier 1):** `upload_contract_file` uploads the actual
+> document (PDF/DOCX) into Salesforce Files via the REST **multipart** blob-insert to `ContentVersion`
+> (ceiling 2 GB — *not* the ~37.5 MB base64 `VersionData` path) and links it to the record in one
+> transaction via `FirstPublishLocationId`. Verified (3-0) against the Salesforce REST blob-insert
+> and ContentVersion object-reference docs. Companion Tier-1 tools (`get_contract`,
+> `list_contracts_by_status`, `submit_for_approval`, `list_approval_processes`,
+> `check_signature_status`) all run on the existing **`api`** scope.
+>
+> **Tier 2 (roadmap, requires licensing):** the first-party **Salesforce Contracts** (Revenue Cloud)
+> CLM product — clause libraries, `ContractDocumentVersion`, native e-sign send/void — usable only if
+> the target org is provisioned with that license; detect at runtime, don't assume.
 
 ---
 

@@ -361,6 +361,13 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
 .toolcat.legal .cb{color:#fff;background:linear-gradient(135deg,var(--procore),var(--sf));border-color:transparent}
 .toolcat.legal .doctypes{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
 .toolcat.legal .doctypes .mintag{font-family:var(--mono);font-size:11px;color:var(--procore);border:1px solid rgba(239,90,35,.3);background:rgba(239,90,35,.05);border-radius:6px;padding:3px 9px}
+/* Salesforce-native legal-document operations — full-width, blue accent, 2-column tool list */
+.toolcat.legalops{grid-column:1/-1;border-color:rgba(10,144,196,.35);background:linear-gradient(180deg,rgba(10,144,196,.05),var(--panel))}
+.toolcat.legalops .ci{color:#fff;background:linear-gradient(135deg,var(--sf),#2bb6e6);border-color:transparent} .toolcat.legalops .tn{color:var(--sf)}
+.toolcat.legalops .cb{color:#fff;background:linear-gradient(135deg,var(--sf),#2bb6e6);border-color:transparent}
+.toolcat.legalops ul{columns:2;column-gap:26px}
+@media(max-width:820px){.toolcat.legalops ul{columns:1}}
+.toolcat.legalops .tool{break-inside:avoid}
 </style>
 </head>
 <body>
@@ -410,7 +417,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
       <a class="btn btn-ghost" href="#use">How to use it</a>
     </div>
     <div class="stats">
-      <div class="stat"><div class="n">143<span class="u"> tests</span></div><div class="l">99% line coverage</div></div>
+      <div class="stat"><div class="n">153<span class="u"> tests</span></div><div class="l">99% line coverage</div></div>
       <div class="stat"><div class="n">&lt;5<span class="u">s</span></div><div class="l">webhook ACK</div></div>
       <div class="stat"><div class="n">OAuth 2.1</div><div class="l">PKCE · S256</div></div>
       <div class="stat"><div class="n">2<span class="u"> systems</span></div><div class="l">1 protocol</div></div>
@@ -441,6 +448,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
     <div class="scenarios" id="scenarios">
       <div class="scn-group-label">Legal documents — the headline capability</div>
       <button class="scn featured" data-dir="pc" data-scn="legaldocs"><span class="ic">⚖</span> Sync legal documents → Salesforce</button>
+      <button class="scn" data-dir="sf" data-scn="uploadcontract"><span class="ic">§</span> Upload signed contract file → Salesforce <span class="feat">ContentVersion</span></button>
 
       <div class="scn-group-label">Core sync &amp; live checks</div>
       <button class="scn live" data-scn="health"><span class="ic">⛅</span> Health check</button>
@@ -553,7 +561,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
     </div>
     <div class="card">
       <div class="ico o">✓</div><h3>Verifiably correct</h3>
-      <p>143 unit + integration tests at ~99% line coverage, including a real MCP client driving the server end-to-end and a webhook replay-storm test. The build is green before it ships.</p>
+      <p>153 unit + integration tests at ~99% line coverage, including a real MCP client driving the server end-to-end and a webhook replay-storm test. The build is green before it ships.</p>
       <div class="tagrow"><span class="mintag">Vitest</span><span class="mintag">85% gate</span><span class="mintag">CI-ready</span></div>
     </div>
   </div>
@@ -642,7 +650,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
   <div class="sec-head reveal">
     <span class="eyebrow">// how to use it</span>
     <h2>Connect a real agent, then put it to work.</h2>
-    <p>Conduit isn't a closed app — it's an endpoint your own AI client connects to. Add it once, approve the secure login, and your agent instantly gains twelve Procore&nbsp;⇄&nbsp;Salesforce capabilities. Here's the whole flow, end to end.</p>
+    <p>Conduit isn't a closed app — it's an endpoint your own AI client connects to. Add it once, approve the secure login, and your agent instantly gains eighteen Procore&nbsp;⇄&nbsp;Salesforce capabilities. Here's the whole flow, end to end.</p>
   </div>
 
   <div class="use-grid reveal">
@@ -654,21 +662,21 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
           <span class="urlpill"><span class="u" id="useurl">https://procore-salesforce-mcp.burademirung.workers.dev/mcp</span><button class="cp" id="usecopy" type="button" aria-label="Copy endpoint URL">Copy</button></span>
           <small>This is the live, deployed Worker — the exact server backing this page.</small></span></li>
         <li class="step"><span class="sn">3</span><span class="stx">Approve the <b>secure sign-in</b> when the client opens it.<small>Conduit runs a standards-compliant OAuth&nbsp;2.1 + PKCE handshake — the real <kbd>/authorize</kbd> → <kbd>/token</kbd> flow. Your agent receives a scoped, bound token; raw credentials are never exposed to it.</small></span></li>
-        <li class="step"><span class="sn">4</span><span class="stx">Your agent <b>discovers all twelve tools</b> automatically.<small>Ask it to “list your available tools” and it will enumerate the catalog on the right — no manual configuration.</small></span></li>
+        <li class="step"><span class="sn">4</span><span class="stx">Your agent <b>discovers all eighteen tools</b> automatically.<small>Ask it to “list your available tools” and it will enumerate the catalog on the right — no manual configuration.</small></span></li>
       </ol>
     </div>
 
     <div style="display:flex;flex-direction:column;gap:16px">
       <div class="note live">
         <div class="nh">What's live right now <span class="ph">Verified</span></div>
-        <p>The endpoint is deployed and healthy. The <b>connection, OAuth handshake, and tool discovery are fully real</b> — connect a client during your demo and the twelve tools appear, proving Conduit is a genuine, standards-compliant MCP server.</p>
+        <p>The endpoint is deployed and healthy. The <b>connection, OAuth handshake, and tool discovery are fully real</b> — connect a client during your demo and the eighteen tools appear, proving Conduit is a genuine, standards-compliant MCP server.</p>
         <p style="margin:0"><span class="mono" style="font-size:12.5px;color:var(--ok)">GET /healthz → 200</span> &nbsp;·&nbsp; <span class="mono" style="font-size:12.5px;color:var(--procore)">POST /mcp → 401 until you sign in</span></p>
       </div>
       <div class="note phase">
         <div class="nh">For the demo conversation <span class="ph">Good to know</span></div>
         <p>Wiring each customer's own Procore &amp; Salesforce OAuth apps is the next phase, so when presenting:</p>
         <ul>
-          <li><b>Do</b> show the connect flow, the OAuth sign-in, and the agent listing all twelve tools.</li>
+          <li><b>Do</b> show the connect flow, the OAuth sign-in, and the agent listing all eighteen tools.</li>
           <li><b>Do</b> walk the live <b>Health</b> and <b>OAuth discovery</b> scenarios in the console above.</li>
           <li><b>Hold</b> on triggering a live data pull — narrate the tool surface instead of fetching real records until the customer's org is connected.</li>
         </ul>
@@ -676,7 +684,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
     </div>
   </div>
 
-  <h3 class="blk reveal" style="margin:46px 0 18px">The twelve tools your agent gets</h3>
+  <h3 class="blk reveal" style="margin:46px 0 18px">The eighteen tools your agent gets</h3>
   <div class="toolcats reveal">
     <div class="toolcat legal">
       <div class="ch"><span class="ci">⚖</span><span class="cn">Legal documents</span><span class="cb">★ Featured</span><span class="ct">1 tool · 4 doc types</span></div>
@@ -689,6 +697,19 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
         <span class="mintag">Procore_Lien_Waiver__c</span>
         <span class="mintag">Procore_Compliance_Document__c</span>
       </div>
+    </div>
+
+    <div class="toolcat legalops">
+      <div class="ch"><span class="ci">§</span><span class="cn">Legal document operations</span><span class="cb">Salesforce-native</span><span class="ct">6 tools · api scope</span></div>
+      <ul>
+        <li class="tool"><span class="tn">upload_contract_file</span><span class="td">Upload a signed document (PDF/DOCX) into Salesforce Files and attach it to a Contract or synced record — REST multipart, up to 2&nbsp;GB.</span></li>
+        <li class="tool"><span class="tn">get_contract</span><span class="td">Read a Salesforce Contract record by id.</span></li>
+        <li class="tool"><span class="tn">list_contracts_by_status</span><span class="td">Query Contracts by Status (Draft, Activated, InApproval…) via SOQL.</span></li>
+        <li class="tool"><span class="tn">submit_for_approval</span><span class="td">Route a record into its native Salesforce approval process.</span></li>
+        <li class="tool"><span class="tn">list_approval_processes</span><span class="td">List the org's approval processes, keyed by object.</span></li>
+        <li class="tool"><span class="tn">check_signature_status</span><span class="td">Read DocuSign envelope status from the eSignature managed package (degrades gracefully if not installed).</span></li>
+      </ul>
+      <p style="font-size:12.5px;color:var(--faint);margin:12px 2px 4px;line-height:1.55">All six run on the <span class="mono">api</span> OAuth scope Conduit already uses — no add-on required. Grounded in primary Salesforce docs (ContentVersion multipart, Process Approvals REST, Contract SOQL).</p>
     </div>
 
     <div class="toolcat read">
@@ -839,7 +860,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
 <span class="k">$</span> npm run worker:dev   <span class="c"># Workers (wrangler)</span>
 
 <span class="k">$</span> npm run typecheck    <span class="c"># node + worker targets</span>
-<span class="k">$</span> npm test             <span class="c"># 143 tests</span>
+<span class="k">$</span> npm test             <span class="c"># 153 tests</span>
 <span class="k">$</span> npm run test:coverage <span class="c"># enforced gates</span>
       </div>
     </div>
@@ -876,7 +897,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
         <li><b>Deep research</b> — <span class="mono">24 verified claims</span>, primary sources</li>
         <li><b>Spec</b> — architecture, mapping, auth, roadmap (<span class="mono">SPEC.md</span>)</li>
         <li><b>Phase 0 build</b> — clients, mapping, sync engine, MCP surface</li>
-        <li><b>Tests</b> — <span class="mono">143 passing · ~99% lines</span></li>
+        <li><b>Tests</b> — <span class="mono">153 passing · ~99% lines</span></li>
         <li><b>Deploy</b> — Cloudflare Workers + this GUI, verified live</li>
       </ul>
     </div>
@@ -948,7 +969,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
     <div class="card">
       <div class="ico o">✓</div><h3>Quality &amp; testing</h3>
       <ul class="techlist">
-        <li><b>Vitest</b> + <span class="mono">@vitest/coverage-v8</span> — 143 tests</li>
+        <li><b>Vitest</b> + <span class="mono">@vitest/coverage-v8</span> — 153 tests</li>
         <li><b>ESLint</b> + <b>typescript-eslint</b> — linting</li>
         <li><b>eslint-plugin-security</b> + <b>Semgrep</b> — SAST</li>
         <li><b>npm audit</b> — SCA (0 vulns)</li>
@@ -1012,7 +1033,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
       <ul class="techlist">
         <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/DEPLOYMENT.md" target="_blank" rel="noopener"><span class="docfile">DEPLOYMENT.md</span></a> — Cloudflare deploy: Workers, Durable Objects, KV, Cron, secrets, verify & rollback</li>
         <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/SECURITY.md" target="_blank" rel="noopener"><span class="docfile">SECURITY.md</span></a> — threat model, SAST/SCA/lint posture, secrets, best practices</li>
-        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/TESTING.md" target="_blank" rel="noopener"><span class="docfile">TESTING.md</span></a> — test strategy, the 143-test suite, coverage gates, helpers</li>
+        <li><a href="https://github.com/burademirung/procore-demo/blob/main/docs/TESTING.md" target="_blank" rel="noopener"><span class="docfile">TESTING.md</span></a> — test strategy, the 153-test suite, coverage gates, helpers</li>
       </ul>
     </div>
     <div class="card srccard">
@@ -1100,7 +1121,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
   <div class="brand" style="font-size:16px"><span class="mk"></span>Conduit</div>
   <div>Created by Vladimir Kamenev · demonstration build · Procore ⇄ Salesforce · MCP · © 2026</div>
 </div>
-<div class="wrap"><p class="disclaimer">Demonstration build. Health &amp; OAuth-discovery scenarios call the live deployed Worker; the advanced scenarios animate <b>real, tested MCP tools</b> (sampling, elicitation, completion, resource templates, structured output, reverse sync, Bulk API jobs) — 143 passing tests, ~99% line coverage. Live Procore/Salesforce credential exchange and Salesforce CDC are Phase 1/4. API field names tagged for verification against current Procore &amp; Salesforce docs.</p></div>
+<div class="wrap"><p class="disclaimer">Demonstration build. Health &amp; OAuth-discovery scenarios call the live deployed Worker; the advanced scenarios animate <b>real, tested MCP tools</b> (sampling, elicitation, completion, resource templates, structured output, reverse sync, Bulk API jobs) — 153 passing tests, ~99% line coverage. Live Procore/Salesforce credential exchange and Salesforce CDC are Phase 1/4. API field names tagged for verification against current Procore &amp; Salesforce docs.</p></div>
 </footer>
 
 <!-- CONTACT MODAL -->
@@ -1373,6 +1394,20 @@ const scenarios = {
       {t:"Structured result returned",d:"validated output schema",logs:[
         '<span class="ok">↳ { synced: 7, byObject: { Procore_Contract_Document__c: 1, … } } — typed &amp; schema-validated</span>']},
     ],'<span class="k">RESULT</span><br><b>Legal documents synced ✓</b> Every contract, certificate, waiver &amp; compliance record → Salesforce, queryable by your legal &amp; CRM teams — with validated structured tool output.');
+  },
+  async uploadcontract(){
+    raw('<span class="hl">▸ MCP tool:</span> <span class="mono">upload_contract_file</span> <span class="m">→ Salesforce ContentVersion (REST multipart, up to 2 GB)</span>');
+    flow.querySelector('[data-fn="sf"]').classList.add("lit","sf");
+    await runStepped([
+      {t:"Receive document bytes",d:"base64 over MCP",flow:"map",logs:[
+        '<span class="m">↳ master-agreement.pdf · 1.4 MB · base64-decoded to bytes</span>']},
+      {t:"POST multipart to ContentVersion",d:"entity_content + VersionData",flow:"sf",flowCls:"sf",logs:[
+        '<span class="sf">↳ multipart/form-data → /sobjects/ContentVersion (not the ~37.5 MB base64 path)</span>']},
+      {t:"Link to the Contract record",d:"FirstPublishLocationId",logs:[
+        '<span class="m">↳ FirstPublishLocationId = 800x… → file shared to the Contract in one transaction</span>']},
+      {t:"Structured result returned",d:"validated output schema",logs:[
+        '<span class="ok">↳ { contentVersionId: "068x…", linkedTo: "800x…" } — on the api scope, no add-on</span>']},
+    ],'<span class="k">RESULT</span><br><b>Contract file uploaded ✓</b> The signed PDF now lives in Salesforce Files, attached to the Contract — so the legal record and its document are together.');
   },
   async financials(){
     raw('<span class="hl">▸ MCP feature:</span> Tools <span class="m">(model-controlled)</span> · structured/typed output · Salesforce Bulk API 2.0');

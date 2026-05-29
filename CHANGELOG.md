@@ -3,6 +3,24 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [0.5.0] — 2026-05-28 — Salesforce-native legal-document operations (Tier 1)
+
+Six new MCP tools that work with legal documents *inside* Salesforce — all on the existing `api`
+OAuth scope (no add-on), grounded in primary-source deep research (111-agent, adversarially verified).
+
+### Added
+- **`upload_contract_file`** — upload a binary document (base64 over MCP) into Salesforce Files via
+  REST **multipart** `ContentVersion` (≤2 GB; *not* the ~37.5 MB base64 path) and link it to a
+  Contract/record via `FirstPublishLocationId`. New `SalesforceClient.uploadContentVersion`.
+- **`get_contract`**, **`list_contracts_by_status`** — read/query the standard Contract object (SOQL; status escaped against injection).
+- **`submit_for_approval`**, **`list_approval_processes`** — native Process Approvals REST resource. New `SalesforceClient.processApproval` / `listApprovalProcesses`.
+- **`check_signature_status`** — SOQL on the DocuSign `dsfs__DocuSign_Status__c` managed-package object; degrades gracefully (`available:false`) if absent.
+- **Tests** — 3 client unit tests + 7 integration tool tests (incl. graceful DocuSign degradation + SOQL-injection guard). Suite grows 143 → **153** passing.
+- **Demo page & docs** — a full-width "Legal document operations" tool card, an "Upload signed contract file" demo scenario, and updates across API/MCP_CAPABILITIES/FOR_AI_AGENTS/MODULE_REFERENCE/SPEC §4.
+
+> Tier 2 (clause libraries, native e-sign send/void via the licensed **Salesforce Contracts** /
+> Revenue Cloud product) is documented as roadmap — it requires per-org provisioning, detected at runtime.
+
 ## [0.4.0] — 2026-05-28 — ★ Legal documents (featured vertical)
 
 ### Added — legal-documents exchange (the headline capability)

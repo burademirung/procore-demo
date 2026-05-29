@@ -68,6 +68,10 @@ Rate-limit-aware fetch.
   - `createRecord(sobject, fields): Promise<{id, success}>`
   - `bulkUpsert(sobject, externalIdField, records[]): Promise<{processed}>` — Phase-0 per-record
     loop; real Bulk API 2.0 job is Phase 3. *(Contracts: `[NEEDS LIVE VERIFICATION]`.)*
+  - **(0.5.0, Tier 1 — `api` scope)** `uploadContentVersion({title, fileName, data, linkedRecordId?}): Promise<{id, success}>`
+    — REST **multipart** blob-insert to `ContentVersion` (≤2 GB), links via `FirstPublishLocationId`;
+    sends auth-only headers so `fetch` sets the multipart boundary. `processApproval({actionType, contextId, comments?, nextApproverIds?, processDefinitionNameOrId?})`
+    and `listApprovalProcesses()` — the Process Approvals REST resource. *(All [VERIFIED] against primary Salesforce docs.)*
 
 ---
 

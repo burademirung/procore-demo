@@ -98,6 +98,81 @@ export class SalesforceClient {
   }
 
   /**
+   * Upload a binary document into Salesforce as a ContentVersion (Salesforce Files) and,
+   * when `linkedRecordId` is given, link it to that record in one transaction via
+   * `FirstPublishLocationId` (works for the standard Contract object and any record that
+   * supports Files — e.g. a synced `Procore_Contract_Document__c`).
+   *
+   * Uses the REST **multipart/form-data** blob-insert path (ContentVersion ceiling 2 GB),
+   * NOT the non-multipart base64 `VersionData` path (which caps at ~37.5 MB base64). The
+   * JSON part is named `entity_content`; the binary part is named after the blob field
+   * `VersionData`. We pass auth-only headers so `fetch` sets the multipart boundary itself.
+   * [VERIFIED 3-0 against developer.salesforce.com REST blob-insert + ContentVersion docs.]
+   */
+  async uploadContentVersion(input: {
+    title: string;
+    fileName: string;
+    data: Uint8Array;
+    linkedRecordId?: string;
+  }): Promise<{ id: string; success: boolean }> {
+    const { instanceUrl, accessToken } = await this.session();
+    const url = `${this.base(instanceUrl)}/sobjects/ContentVersion`;
+    const entity: Record<string, unknown> = {
+      Title: input.title,
+      PathOnClient: input.fileName,
+      ...(input.linkedRecordId ? { FirstPublishLocationId: input.linkedRecordId } : {}),
+    };
+    const form = new FormData();
+    form.append("entity_content", new Blob([JSON.stringify(entity)], { type: "application/json" }));
+    // Hand Blob the underlying ArrayBuffer (TS 5.7's Uint8Array<ArrayBufferLike> doesn't satisfy
+    // the lib's BlobPart). Callers pass an exact-size buffer, so no offset/length slicing is needed.
+    const buffer = input.data.buffer.slice(input.data.byteOffset, input.data.byteOffset + input.data.byteLength) as ArrayBuffer;
+    form.append("VersionData", new Blob([buffer], { type: "application/octet-stream" }), input.fileName);
+    return fetchJson(url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" },
+      body: form,
+    });
+  }
+
+  /**
+   * Native Salesforce Approval Processes via the REST Process Approvals resource
+   * (`POST /process/approvals/`). `actionType` is Submit / Approve / Reject; `contextId` is
+   * the target record (e.g. a Contract). [VERIFIED 3-0.]
+   */
+  async processApproval(request: {
+    actionType: "Submit" | "Approve" | "Reject";
+    contextId: string;
+    comments?: string;
+    nextApproverIds?: string[];
+    processDefinitionNameOrId?: string;
+  }): Promise<unknown> {
+    const { instanceUrl } = await this.session();
+    const body = {
+      requests: [
+        {
+          actionType: request.actionType,
+          contextId: request.contextId,
+          ...(request.comments ? { comments: request.comments } : {}),
+          ...(request.nextApproverIds ? { nextApproverIds: request.nextApproverIds } : {}),
+          ...(request.processDefinitionNameOrId ? { processDefinitionNameOrId: request.processDefinitionNameOrId } : {}),
+        },
+      ],
+    };
+    return fetchJson(`${this.base(instanceUrl)}/process/approvals/`, {
+      method: "POST",
+      headers: await this.headers(),
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** List the org's approval processes, keyed by SObject type (`GET /process/approvals/`). [VERIFIED 3-0.] */
+  async listApprovalProcesses(): Promise<unknown> {
+    const { instanceUrl } = await this.session();
+    return fetchJson(`${this.base(instanceUrl)}/process/approvals/`, { headers: await this.headers() });
+  }
+
+  /**
    * Simple bulk upsert: one REST upsert per record. Fine for small batches; for large volumes use
    * `bulkUpsertJob` (Bulk API 2.0). Kept for convenience and low-latency small writes.
    */

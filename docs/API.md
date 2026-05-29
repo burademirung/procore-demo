@@ -58,6 +58,23 @@ and compliance records** into Salesforce custom objects (`Procore_Contract_Docum
 `Procore_Insurance_Certificate__c`, `Procore_Lien_Waiver__c`, `Procore_Compliance_Document__c`) by
 External ID. `byObject` reports the per-object upsert count. Honors `AbortSignal`.
 
+### Salesforce-native legal-document operations (0.5.0 · Tier 1)
+All six run on the **`api` OAuth scope** Conduit already uses — no add-on. Grounded in primary
+Salesforce docs (ContentVersion multipart blob-insert, Process Approvals REST resource, Contract SOQL).
+
+| Tool | Input | Output | API used |
+|---|---|---|---|
+| **`upload_contract_file`** | `{ recordId, fileName, contentBase64, title? }` | `{ contentVersionId, linkedTo }` | REST **multipart** → `ContentVersion` (≤2 GB), linked via `FirstPublishLocationId` |
+| `get_contract` | `{ contractId }` | `{ contract }` | `GET /sobjects/Contract/{id}` |
+| `list_contracts_by_status` | `{ status, limit? }` | `{ records, count }` | SOQL on `Contract` (status escaped) |
+| `submit_for_approval` | `{ recordId, comments?, nextApproverIds?, processDefinitionNameOrId? }` | `{ result }` | `POST /process/approvals/` |
+| `list_approval_processes` | `{}` | `{ approvals }` | `GET /process/approvals/` |
+| `check_signature_status` | `{ envelopeId }` | `{ available, records, detail? }` | SOQL on `dsfs__DocuSign_Status__c` (graceful if package absent) |
+
+> Binary file content arrives as **base64** over MCP's JSON transport; `upload_contract_file` decodes
+> it and POSTs **multipart/form-data** to `ContentVersion` (avoiding the ~37.5 MB base64 path).
+> `check_signature_status` depends on the DocuSign managed package (newer installs use `dfsle__`).
+
 ### Tools added in 0.2.0
 | Tool | Input | Output | MCP feature |
 |---|---|---|---|

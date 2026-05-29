@@ -40,9 +40,22 @@ function templateVar(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
+/** Decode base64 (how binary file content arrives over MCP's JSON transport) to raw bytes. */
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/** Escape a single-quoted SOQL literal to prevent SOQL injection. */
+function soqlLiteral(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
 export function buildMcpServer(deps: Deps): McpServer {
   const server = new McpServer(
-    { name: "procore-salesforce-mcp", version: "0.4.0" },
+    { name: "procore-salesforce-mcp", version: "0.5.0" },
     { capabilities: { logging: {}, resources: { subscribe: true, listChanged: true } } },
   );
 
@@ -75,6 +88,132 @@ export function buildMcpServer(deps: Deps): McpServer {
       annotations: { idempotentHint: true, destructiveHint: false, openWorldHint: true },
     },
     async ({ projectId }, extra) => ok(await deps.sync.syncLegalDocuments(projectId, extra.signal)),
+  );
+
+  // ★ FEATURED — Salesforce-native legal-document operations (Tier 1; `api` scope only).
+  // Grounded in deep research against primary Salesforce docs: ContentVersion multipart upload,
+  // standard Contract SOQL, the Process Approvals REST resource, and DocuSign Status SOQL.
+
+  server.registerTool(
+    "upload_contract_file",
+    {
+      title: "Upload a document file to Salesforce & attach it",
+      description:
+        "Upload a binary legal document (base64) into Salesforce as a ContentVersion and link it to a record (a Contract, or a synced Procore_Contract_Document__c) via FirstPublishLocationId. Uses REST multipart (up to 2 GB).",
+      inputSchema: {
+        recordId: z.string().describe("Salesforce record id to attach the file to (e.g. a Contract)"),
+        fileName: z.string().describe("File name incl. extension, e.g. master-agreement.pdf"),
+        contentBase64: z.string().describe("Base64-encoded file bytes"),
+        title: z.string().optional(),
+      },
+      outputSchema: { contentVersionId: z.string(), linkedTo: z.string() },
+      annotations: { destructiveHint: false, openWorldHint: true },
+    },
+    async ({ recordId, fileName, contentBase64, title }) => {
+      const res = await deps.salesforce.uploadContentVersion({
+        title: title ?? fileName,
+        fileName,
+        data: base64ToBytes(contentBase64),
+        linkedRecordId: recordId,
+      });
+      return ok({ contentVersionId: res.id, linkedTo: recordId });
+    },
+  );
+
+  server.registerTool(
+    "get_contract",
+    {
+      title: "Get a Salesforce Contract",
+      description: "Read a Salesforce Contract record by id.",
+      inputSchema: { contractId: z.string() },
+      outputSchema: { contract: z.record(z.string(), z.unknown()) },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ contractId }) => ok({ contract: await deps.salesforce.getRecord("Contract", contractId) }),
+  );
+
+  server.registerTool(
+    "list_contracts_by_status",
+    {
+      title: "List Salesforce Contracts by status",
+      description: "Query Salesforce Contracts filtered by Status (e.g. Draft, Activated, InApproval) via SOQL.",
+      inputSchema: { status: z.string(), limit: z.number().int().min(1).max(200).default(50) },
+      outputSchema: { records: z.array(z.record(z.string(), z.unknown())), count: z.number() },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ status, limit }) => {
+      const soql = `SELECT Id, ContractNumber, Status, AccountId, StartDate, ContractTerm FROM Contract WHERE Status = '${soqlLiteral(status)}' LIMIT ${limit}`;
+      const res = await deps.salesforce.query<Record<string, unknown>>(soql);
+      return ok({ records: res.records, count: res.records.length });
+    },
+  );
+
+  server.registerTool(
+    "submit_for_approval",
+    {
+      title: "Submit a record for approval",
+      description: "Submit a Salesforce record (e.g. a Contract) into its approval process via the Process Approvals REST resource.",
+      inputSchema: {
+        recordId: z.string(),
+        comments: z.string().optional(),
+        nextApproverIds: z.array(z.string()).optional(),
+        processDefinitionNameOrId: z.string().optional(),
+      },
+      outputSchema: { result: z.unknown() },
+      annotations: { destructiveHint: false, openWorldHint: true },
+    },
+    async ({ recordId, comments, nextApproverIds, processDefinitionNameOrId }) =>
+      ok({
+        result: await deps.salesforce.processApproval({
+          actionType: "Submit",
+          contextId: recordId,
+          ...(comments ? { comments } : {}),
+          ...(nextApproverIds ? { nextApproverIds } : {}),
+          ...(processDefinitionNameOrId ? { processDefinitionNameOrId } : {}),
+        }),
+      }),
+  );
+
+  server.registerTool(
+    "list_approval_processes",
+    {
+      title: "List approval processes",
+      description: "List the org's approval processes (keyed by SObject type) via GET /process/approvals/.",
+      inputSchema: {},
+      outputSchema: { approvals: z.unknown() },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async () => ok({ approvals: await deps.salesforce.listApprovalProcesses() }),
+  );
+
+  server.registerTool(
+    "check_signature_status",
+    {
+      title: "Check e-signature status (DocuSign)",
+      description:
+        "Query the DocuSign 'eSignature for Salesforce' managed-package object (dsfs__DocuSign_Status__c) for an envelope's status. Returns available:false with a clear message if that package isn't installed in the org.",
+      inputSchema: { envelopeId: z.string() },
+      outputSchema: {
+        available: z.boolean(),
+        records: z.array(z.record(z.string(), z.unknown())),
+        detail: z.string().optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ envelopeId }) => {
+      const soql = `SELECT Id, dsfs__Envelope_Status__c, dsfs__Subject__c, dsfs__DocuSign_Envelope_ID__c FROM dsfs__DocuSign_Status__c WHERE dsfs__DocuSign_Envelope_ID__c = '${soqlLiteral(envelopeId)}' LIMIT 50`;
+      try {
+        const res = await deps.salesforce.query<Record<string, unknown>>(soql);
+        return ok({ available: true, records: res.records });
+      } catch {
+        return ok({
+          available: false,
+          records: [],
+          detail:
+            "DocuSign 'eSignature for Salesforce' managed package not installed (or dsfs__DocuSign_Status__c not queryable) in this org. Note: newer installs use the dfsle__ namespace.",
+        });
+      }
+    },
   );
 
   server.registerTool(

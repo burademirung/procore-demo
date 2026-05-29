@@ -19,7 +19,7 @@ bidirectional sync between **Procore** (construction management) and **Salesforc
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Cloudflare deploy: Workers, Durable Objects, KV, Cron, secrets |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Local setup, project layout, build targets, workflows |
 | [MODULE_REFERENCE.md](MODULE_REFERENCE.md) | File-by-file, export-by-export reference (lowest level) |
-| [TESTING.md](TESTING.md) | Test strategy, the 143-test suite, coverage gates, helpers |
+| [TESTING.md](TESTING.md) | Test strategy, the 153-test suite, coverage gates, helpers |
 | [SECURITY.md](SECURITY.md) | Threat model, SAST/SCA/lint, secrets, best practices |
 | [FOR_AI_AGENTS.md](FOR_AI_AGENTS.md) | **For AI agents that connect to Conduit** — capabilities, how to call tools, behavior guidance |
 

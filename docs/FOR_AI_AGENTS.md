@@ -12,6 +12,10 @@ handle Procore or Salesforce API keys directly — Conduit brokers them for you 
 Use Conduit when a user asks you to:
 - **sync legal documents** (contracts, insurance certificates, lien waivers, compliance records)
   from Procore into Salesforce — call **`sync_project_legal_documents`** (the featured tool),
+- **upload a signed document file** into Salesforce and attach it to a Contract/record
+  (`upload_contract_file`), **read/list Contracts** (`get_contract`, `list_contracts_by_status`),
+  **route a record for approval** (`submit_for_approval`, `list_approval_processes`), or
+  **check e-signature status** (`check_signature_status`),
 - reflect a construction **project / company / contact** between Procore and Salesforce,
 - pull Procore **financials, RFIs, or submittals** into the CRM,
 - set up or run a **sync / reconciliation** between the two systems,

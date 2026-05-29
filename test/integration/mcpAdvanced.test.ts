@@ -76,7 +76,20 @@ describe("MCP advanced capabilities", () => {
   it("advertises the new tools with structured output", async () => {
     const { tools } = await conn.client.listTools();
     const names = tools.map((t) => t.name);
-    for (const n of ["sync_project_legal_documents", "sync_procore_financials", "create_salesforce_case_from_rfi", "dedupe_contacts", "summarize_project", "resolve_sync_conflict"]) {
+    for (const n of [
+      "sync_project_legal_documents",
+      "upload_contract_file",
+      "get_contract",
+      "list_contracts_by_status",
+      "submit_for_approval",
+      "list_approval_processes",
+      "check_signature_status",
+      "sync_procore_financials",
+      "create_salesforce_case_from_rfi",
+      "dedupe_contacts",
+      "summarize_project",
+      "resolve_sync_conflict",
+    ]) {
       expect(names, n).toContain(n);
     }
   });
@@ -124,6 +137,65 @@ describe("MCP advanced capabilities", () => {
     const sc = (res as { structuredContent?: { synced?: number; byObject?: Record<string, number> } }).structuredContent;
     expect(sc?.synced).toBe(4);
     expect(sc?.byObject?.["Procore_Contract_Document__c"]).toBe(1);
+  });
+
+  it("TOOL: upload_contract_file uploads a ContentVersion and links it to a record", async () => {
+    mock = installFetchMock([{ match: "/sobjects/ContentVersion", responses: { json: { id: "068aa", success: true } } }]);
+    const res = await conn.client.callTool({
+      name: "upload_contract_file",
+      arguments: { recordId: "800aa", fileName: "agreement.pdf", contentBase64: btoa("%PDF-1.7 fake"), title: "Master Agreement" },
+    });
+    const sc = (res as { structuredContent?: { contentVersionId?: string; linkedTo?: string } }).structuredContent;
+    expect(sc?.contentVersionId).toBe("068aa");
+    expect(sc?.linkedTo).toBe("800aa");
+    expect(mock!.callsFor("/sobjects/ContentVersion")[0]!.method).toBe("POST");
+  });
+
+  it("TOOL: get_contract reads a Salesforce Contract", async () => {
+    mock = installFetchMock([{ match: "/sobjects/Contract/800bb", responses: { json: { Id: "800bb", ContractNumber: "00001", Status: "Draft" } } }]);
+    const res = await conn.client.callTool({ name: "get_contract", arguments: { contractId: "800bb" } });
+    const sc = (res as { structuredContent?: { contract?: { ContractNumber?: string } } }).structuredContent;
+    expect(sc?.contract?.ContractNumber).toBe("00001");
+  });
+
+  it("TOOL: list_contracts_by_status queries by Status and guards against SOQL injection", async () => {
+    mock = installFetchMock([{ match: "/services/data/v62.0/query", responses: { json: { records: [{ Id: "800cc", Status: "Activated" }], done: true } } }]);
+    const res = await conn.client.callTool({ name: "list_contracts_by_status", arguments: { status: "Activated' OR Name!=''", limit: 10 } });
+    const sc = (res as { structuredContent?: { count?: number } }).structuredContent;
+    expect(sc?.count).toBe(1);
+    // the injected single quote is escaped inside the SOQL literal (no early string break)
+    expect(decodeURIComponent(mock!.calls[0]!.url)).toContain("WHERE Status = 'Activated\\' OR");
+  });
+
+  it("TOOL: submit_for_approval posts to the Process Approvals resource", async () => {
+    mock = installFetchMock([{ match: "/process/approvals/", responses: { json: [{ success: true, instanceId: "04gxx" }] } }]);
+    const res = await conn.client.callTool({ name: "submit_for_approval", arguments: { recordId: "800dd", comments: "ready" } });
+    expect(firstText(res as never)).toContain("04gxx");
+    const body = JSON.parse(mock!.calls[0]!.body!);
+    expect(body.requests[0]).toMatchObject({ actionType: "Submit", contextId: "800dd", comments: "ready" });
+  });
+
+  it("TOOL: list_approval_processes GETs the approvals resource", async () => {
+    mock = installFetchMock([{ match: "/process/approvals/", responses: { json: { approvals: { Contract: [] } } } }]);
+    const res = await conn.client.callTool({ name: "list_approval_processes", arguments: {} });
+    expect(firstText(res as never)).toContain("approvals");
+    expect(mock!.calls[0]!.method).toBe("GET");
+  });
+
+  it("TOOL: check_signature_status returns records when DocuSign is installed", async () => {
+    mock = installFetchMock([{ match: "/services/data/v62.0/query", responses: { json: { records: [{ Id: "a1", dsfs__Envelope_Status__c: "Completed" }], done: true } } }]);
+    const res = await conn.client.callTool({ name: "check_signature_status", arguments: { envelopeId: "env-123" } });
+    const sc = (res as { structuredContent?: { available?: boolean; records?: unknown[] } }).structuredContent;
+    expect(sc?.available).toBe(true);
+    expect(sc?.records).toHaveLength(1);
+  });
+
+  it("TOOL: check_signature_status degrades gracefully when the DocuSign package is absent", async () => {
+    mock = installFetchMock([{ match: "/services/data/v62.0/query", responses: { status: 400, json: [{ errorCode: "INVALID_TYPE", message: "sObject type 'dsfs__DocuSign_Status__c' is not supported." }] } }]);
+    const res = await conn.client.callTool({ name: "check_signature_status", arguments: { envelopeId: "env-404" } });
+    const sc = (res as { structuredContent?: { available?: boolean; detail?: string } }).structuredContent;
+    expect(sc?.available).toBe(false);
+    expect(sc?.detail).toContain("managed package");
   });
 
   it("TOOL: sync_procore_financials bulk-syncs financial objects", async () => {
