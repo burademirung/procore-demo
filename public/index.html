@@ -209,6 +209,15 @@ section{padding:70px 0;position:relative}
 .card .ico.o{color:var(--procore);background:rgba(255,106,43,.08)}
 .card .ico.b{color:var(--sf);background:rgba(30,192,240,.08)}
 .card .ico.g{color:var(--gold);background:rgba(255,180,61,.08)}
+.card .ico.ok{color:var(--ok);background:rgba(15,157,88,.1)}
+.statuscard ul{list-style:none;padding:0;margin:10px 0 0}
+.statuscard li{position:relative;padding:7px 0 7px 18px;border-top:1px solid var(--line);font-size:13.5px;color:var(--muted);line-height:1.5}
+.statuscard li:first-child{border-top:none}
+.statuscard li::before{position:absolute;left:0;top:7px;font-family:var(--mono);font-size:12px}
+.statuscard.live li::before{content:"✓";color:var(--ok)}
+.statuscard.tune li::before{content:"⚖";color:var(--gold)}
+.statuscard.next li::before{content:"→";color:var(--sf)}
+.statuscard li b{color:var(--ink);font-weight:600}
 .tagrow{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
 .mintag{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
 .techlist{list-style:none;padding:0;margin:6px 0 0}
@@ -390,6 +399,7 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
   <div class="nav-links">
     <a href="#demo">Demo</a>
     <a href="#use">Use it</a>
+    <a href="#status">Status</a>
     <a href="#how">How it works</a>
     <a href="#arch">Architecture</a>
     <a href="#deploy">Deploy</a>
@@ -749,6 +759,49 @@ footer{border-top:1px solid var(--line);padding:36px 0;color:var(--faint);font-s
       <p style="font-size:13px;color:var(--faint);margin:14px 2px 4px;line-height:1.55">Tip: a one-time setup step the customer runs first — after that, the read, sync and workflow tools act on their behalf.</p>
     </div>
   </div>
+</div></section>
+
+<!-- STATUS & TRANSPARENCY -->
+<section id="status"><div class="wrap">
+  <div class="sec-head reveal">
+    <span class="eyebrow">// where this stands · v0.6.3</span>
+    <h2>What's real, what's best-effort, what's next.</h2>
+    <p>Straight talk so you can trust the demo. The server is built, deployed and heavily tested; a few things are deliberately tuned per-org or staged for a later phase. Nothing here is hidden.</p>
+  </div>
+  <div class="cards g3 reveal" style="align-items:start">
+    <div class="card statuscard live">
+      <div class="ico ok">✓</div>
+      <h3>Live &amp; real today</h3>
+      <ul>
+        <li><b>18 MCP tools</b>, auto-discovered over one OAuth&nbsp;2.1 + PKCE connection</li>
+        <li><b>Bidirectional sync engine</b> — Procore&nbsp;⇄&nbsp;Salesforce, idempotent upsert-by-External-Id</li>
+        <li>Legal documents featured + <b>Salesforce-native ops</b> (file upload, contracts, approvals, e-sign status)</li>
+        <li><b>177 tests</b> · ~99% line / 85%+ branch coverage · typecheck + lint clean</li>
+        <li>Deployed on Cloudflare Workers; webhook <b>fails closed</b> without a signing secret</li>
+      </ul>
+    </div>
+    <div class="card statuscard tune">
+      <div class="ico g">⚖</div>
+      <h3>Best-effort — tune for your org</h3>
+      <ul>
+        <li>Reverse (SF→Procore) writes are <b>last-write-wins</b>; <span class="mono">conflict.ts</span> is a configurable seam, not yet enforced</li>
+        <li>Echo suppression is <b>heuristic</b> — Salesforce CDC sends partial payloads; production uses <span class="mono">changeOrigin</span></li>
+        <li><b>DELETE is never propagated</b> SF→Procore (Procore is the system of record)</li>
+        <li>File upload practical limit <b>~20&nbsp;MB</b> (buffered in the Worker)</li>
+      </ul>
+    </div>
+    <div class="card statuscard next">
+      <div class="ico b">→</div>
+      <h3>Phase&nbsp;1 &amp; roadmap</h3>
+      <ul>
+        <li><b>Live per-tenant token exchange</b> — required before real customer data flows (today: tested logic, demo data)</li>
+        <li><b>Durable-Object</b>-backed dedup/link for strong consistency (KV is eventually consistent)</li>
+        <li>Procore write endpoints tagged <span class="mono">[NEEDS LIVE VERIFICATION]</span> — confirm on a live Procore account</li>
+        <li>Field-ownership conflict resolution, CDC gap/overflow re-read — see <b>SPEC&nbsp;§8a</b></li>
+      </ul>
+    </div>
+  </div>
+  <p class="disclaimer" style="margin-top:20px">Hardening priorities are research-backed (bidirectional-sync conflict strategies, Salesforce CDC delivery semantics, Cloudflare KV vs Durable&nbsp;Object consistency) and tracked in <a href="https://github.com/burademirung/procore-demo/blob/main/SPEC.md" target="_blank" rel="noopener" style="color:var(--sf)">SPEC §8a</a> and the <a href="https://github.com/burademirung/procore-demo/blob/main/CHANGELOG.md" target="_blank" rel="noopener" style="color:var(--sf)">CHANGELOG</a>.</p>
 </div></section>
 
 <!-- DEPLOYMENT ON CLOUDFLARE -->
